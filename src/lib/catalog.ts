@@ -224,6 +224,41 @@ export function nowPlaying(cat: Catalog, id: string, now = new Date()) {
   return { slot, current: at(0), next: at(1), later: at(2), offsetSec: (mins % SLOT_MIN) * 60 + now.getSeconds() }
 }
 
+// What the channel airs after the current show, with start times: the next `count` changes of
+// show, following the same slots as the live player. `endsAt` is when the current show ends.
+export function upNext(cat: Catalog, id: string, count = 3, now = new Date()) {
+  const { slot, current } = nowPlaying(cat, id, now)
+  const midnight = new Date(now)
+  midnight.setHours(0, 0, 0, 0)
+  const at = (s: number) => new Date(midnight.getTime() + s * SLOT_MIN * 60000)
+  const next: { title: Title; start: Date }[] = []
+  let prev = current
+  for (let k = 1; k <= 200 && next.length < count; k++) {
+    const t = showAt(cat, id, slot + k)
+    if (t && t.id !== prev.id) { next.push({ title: t, start: at(slot + k) }); prev = t }
+  }
+  return { current, endsAt: next[0]?.start ?? null, next }
+}
+
+// The whole day on a channel, midnight to midnight: one entry per show change, following the
+// same slots as the live player.
+export function daySchedule(cat: Catalog, id: string, now = new Date()) {
+  const midnight = new Date(now)
+  midnight.setHours(0, 0, 0, 0)
+  const at = (s: number) => new Date(midnight.getTime() + s * SLOT_MIN * 60000)
+  const out: { title: Title; start: Date; end: Date }[] = []
+  for (let slot = 0; slot * SLOT_MIN < DAY_MIN; slot++) {
+    const t = showAt(cat, id, slot)
+    if (!t) continue
+    const last = out[out.length - 1]
+    if (last && last.title.id === t.id) last.end = at(slot + 1)
+    else out.push({ title: t, start: at(slot), end: at(slot + 1) })
+  }
+  return out
+}
+
+export const timeLabel =(d: Date) => d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
+
 // "7:00 AM" for minutes from midnight, in the viewer's own clock format.
 export const clockLabel = (m: number) => new Date(2000, 0, 1, 0, m).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
 

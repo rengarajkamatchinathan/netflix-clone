@@ -9,6 +9,7 @@ import { useReloadCatalog } from '@/context/CatalogContext'
 import { Plus, Search, Trash } from '@/components/icons'
 import { Check, ColorField, ConfirmDelete, errorMessage, Loading, Modal, SortableList, TextField, Thumb, useApi, useToast } from './kit'
 import { ShowModal } from './Shows'
+import { ScheduleEditor, scheduleError, toEndMin, toMin, toTime, type BlockRow } from './ScheduleEditor'
 import type { AdminChannel, AdminTitleRow, ChannelDetail, LineupTitle, TitleDetail } from './types'
 
 const DEFAULT_COLORS: ChannelColors = { bg: '#141414', accent: '#e50914', accent2: '#ffffff' }
@@ -16,39 +17,7 @@ const LOGO_TYPES = ['image/png', 'image/jpeg', 'image/webp', 'image/gif', 'image
 const MAX_LOGO_BYTES = 2 * 1024 * 1024
 let keySeq = 0
 
-const DAY = 24 * 60
-const toTime = (m: number) => `${String(Math.floor(m / 60) % 24).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`
-const toMin = (t: string) => { const [h, m] = t.split(':').map(Number); return h * 60 + m }
-// An end time of 00:00 means midnight at the end of the day.
-const toEndMin = (t: string) => toMin(t) || DAY
-
-// Same rules as the server: real times, end after start, at least one show, no overlaps.
-function scheduleError(blocks: BlockRow[]): string {
-  const list = blocks.map(b => ({ ...b, s: b.start ? toMin(b.start) : NaN, e: b.end ? toEndMin(b.end) : NaN })).sort((a, b) => a.s - b.s)
-  for (const [i, b] of list.entries()) {
-    if (isNaN(b.s) || isNaN(b.e)) return 'Give every time block a start and end time.'
-    if (b.e <= b.s) return `The ${b.start} block must end after it starts.`
-    if (!b.titleIds.length) return `Add at least one show to the ${b.start} block.`
-    if (i && b.s < list[i - 1].e) return `The ${list[i - 1].start} and ${b.start} blocks overlap.`
-  }
-  return ''
-}
-
-// A 24-hour strip showing where the blocks fall in the day.
-function DayBar({ blocks, color }: { blocks: BlockRow[]; color: string }) {
-  return (
-    <div className="adm-daybar" aria-hidden>
-      {blocks.filter(b => b.start && b.end && toEndMin(b.end) > toMin(b.start)).map(b => (
-        <span key={b.key} style={{ left: `${(toMin(b.start) / DAY) * 100}%`, width: `${((toEndMin(b.end) - toMin(b.start)) / DAY) * 100}%`, background: color }} title={`${b.start}–${b.end}`} />
-      ))}
-      {[0, 6, 12, 18, 24].map(h => <i key={h} style={{ left: `${(h / 24) * 100}%` }}>{h === 24 ? '' : `${String(h).padStart(2, '0')}:00`}</i>)}
-    </div>
-  )
-}
-
 interface BumperRow { key: number; url: string }
-// A daily time block being edited; times are "HH:MM" as the time inputs use them.
-interface BlockRow { key: number; start: string; end: string; titleIds: string[] }
 interface ChannelForm {
   slug: string; slugTouched?: boolean; name: string; tagline: string; hidden: boolean; colors: ChannelColors
   bumpers: BumperRow[]; lineup: LineupTitle[]; image: string | null; schedule: BlockRow[]
@@ -143,12 +112,6 @@ function ChannelModal({ id, shows, channels, onClose, onChanged }: {
   // Blocks only keep shows still in the line-up.
   const inLineup = new Set(form.lineup.map(t => t.id))
   const blocks = form.schedule.map(b => ({ ...b, titleIds: b.titleIds.filter(t => inLineup.has(t)) }))
-  const setBlock = (key: number, patch: Partial<BlockRow>) => set({ schedule: form.schedule.map(b => (b.key === key ? { ...b, ...patch } : b)) })
-  const addBlock = () => {
-    const last = Math.max(0, ...blocks.filter(b => b.end).map(b => toEndMin(b.end)))
-    const start = blocks.length ? (last >= DAY ? 0 : last) : 7 * 60
-    set({ schedule: [...form.schedule, { key: ++keySeq, start: toTime(start), end: toTime(Math.min(start + 120, DAY)), titleIds: [] }] })
-  }
 
   const save = async () => {
     if (!form.name.trim()) { setTab('details'); return setErr('Enter a channel name.') }
@@ -270,39 +233,7 @@ function ChannelModal({ id, shows, channels, onClose, onChanged }: {
         )}
 
         {tab === 'schedule' && (
-          <div className="adm-stack">
-            <p className="adm-muted">Choose shows for times of day. During a block its shows play back-to-back, every day, in each viewer&apos;s local time. At any other time the whole line-up plays in order.</p>
-            <DayBar blocks={blocks} color={form.colors.accent} />
-            {!form.lineup.length ? <p className="adm-empty">Add shows on the Shows tab first.</p> : <>
-              {blocks.map(b => {
-                const free = form.lineup.filter(t => !b.titleIds.includes(t.id))
-                const name = (tid: string) => form.lineup.find(t => t.id === tid)?.name || tid
-                return (
-                  <div key={b.key} className="adm-block">
-                    <div className="adm-block-head">
-                      <label>From <input type="time" value={b.start} onChange={e => setBlock(b.key, { start: e.target.value })} /></label>
-                      <label>to <input type="time" value={b.end} onChange={e => setBlock(b.key, { end: e.target.value })} /></label>
-                      <span className="grow" />
-                      <button type="button" className="adm-icon" aria-label={`Remove the ${b.start} block`} onClick={() => set({ schedule: form.schedule.filter(x => x.key !== b.key) })}><Trash size={16} /></button>
-                    </div>
-                    <div className="adm-chips">
-                      {b.titleIds.map(tid => (
-                        <span key={tid} className="adm-chip">{name(tid)}<button type="button" aria-label={`Remove ${name(tid)}`} onClick={() => setBlock(b.key, { titleIds: b.titleIds.filter(x => x !== tid) })}>✕</button></span>
-                      ))}
-                      {free.length > 0 && (
-                        <select className="adm-chip-add" value="" aria-label="Add a show to this block" onChange={e => { if (e.target.value) setBlock(b.key, { titleIds: [...b.titleIds, e.target.value] }) }}>
-                          <option value="">+ Add show</option>
-                          {free.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
-                        </select>
-                      )}
-                    </div>
-                    {!b.titleIds.length && <small className="adm-err-text">Add at least one show.</small>}
-                  </div>
-                )
-              })}
-              <button type="button" className="adm-btn" onClick={addBlock}><Plus size={16} /> Add time block</button>
-            </>}
-          </div>
+          <ScheduleEditor blocks={blocks} lineup={form.lineup} color={form.colors.accent} onChange={schedule => set({ schedule })} />
         )}
 
         {tab === 'bumpers' && (

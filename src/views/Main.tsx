@@ -1,16 +1,17 @@
 'use client'
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { createPortal } from 'react-dom'
 import Link from 'next/link'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { useApp } from '@/context/AppContext'
 import { useCatalog } from '@/context/CatalogContext'
-import { becauseYouWatched, blockAt, channelTitles, clockLabel, continueWatching, nowPlaying, randomBumper, rowsFor, search, searchSuggestions, type Channel, type Title } from '@/lib/catalog'
+import { becauseYouWatched, blockAt, daySchedule, channelTitles, clockLabel, continueWatching, nowPlaying, randomBumper, rowsFor, search, searchSuggestions, timeLabel, upNext, type Channel, type Title } from '@/lib/catalog'
 import { api } from '@/lib/api'
 import type { Bumper, HistoryEntry } from '@/lib/types'
 import { YouTubeClip } from './Player'
 import { cssVars, Footer, Navbar, PosterArt, timeAgo } from '@/components/ui'
 import { Billboard, ChannelStrip, ChannelTile, posLabel, Row, TitleCard, useBrowse } from '@/components/Browse'
-import { ChevronDown, ChevronLeft, Close, Info, Mute, Play, Search as SearchIcon, Volume } from '@/components/icons'
+import { ChevronDown, ChevronLeft, ChevronRight, Close, Info, Mute, Play, Search as SearchIcon, Volume } from '@/components/icons'
 
 const HEADINGS: Record<string, string> = { tv: 'TV Shows', movie: 'Films', new: 'New & Popular' }
 
@@ -184,9 +185,14 @@ export function ChannelPage({ id }: { id: string }) {
     const t = setTimeout(() => setCompact(true), 4000)
     return () => clearTimeout(t)
   }, [id])
+  // Re-render every half minute so "on now" and "up next" follow the clock.
+  const [now, setNow] = useState(() => new Date())
+  useEffect(() => { const h = setInterval(() => setNow(new Date()), 30000); return () => clearInterval(h) }, [])
   if (!c) return <Grid heading="Channel not found" items={[]} empty="" />
   const list = channelTitles(cat, id)
-  const np = nowPlaying(cat, id)
+  const np = upNext(cat, id, 3, now)
+  const block = blockAt(c, now.getHours() * 60 + now.getMinutes())
+  const [showSchedule, setShowSchedule] = useState(false)
   const shows = list.filter(t => t.type !== 'movie')
   const movies = list.filter(t => t.type === 'movie')
   const continuing = profile ? continueWatching(cat, profile, id) : []
@@ -207,7 +213,21 @@ export function ChannelPage({ id }: { id: string }) {
           <div className="now-box">
             <span className="live-pill"><i />LIVE NOW</span>
             <h2>{np.current.name}</h2>
-            <p>Up next: <b>{np.next.name}</b> · Later: {np.later.name}</p>
+            <p className="now-meta">
+              {np.endsAt && <>Until {timeLabel(np.endsAt)}</>}
+              {block && <> · {clockLabel(block.start)} – {clockLabel(block.end)} block</>}
+            </p>
+            {np.next.length > 0 && (
+              <ol className="up-next">
+                {np.next.map(n => (
+                  <li key={n.start.getTime()}>
+                    <time>{timeLabel(n.start)}</time>
+                    <button type="button" onClick={() => openInfo(n.title)}>{n.title.name}</button>
+                  </li>
+                ))}
+              </ol>
+            )}
+            <button type="button" className="full-schedule-btn" onClick={() => setShowSchedule(true)}>Full schedule <ChevronRight size={14} /></button>
           </div>
           <div className="btns">
             <button className="btn white" onClick={() => router.push(`/live/${id}`)}><Play size={26} /> Watch Live</button>
@@ -220,9 +240,9 @@ export function ChannelPage({ id }: { id: string }) {
         <Row title={`Top 10 on ${c.name}`} items={shows.slice(0, 10)} top10 />
         {because && <Row title={`Because You Watched ${because.source.name}`} items={because.items} />}
         <Row title={`All on ${c.name}`} items={shows} viewAll={`/channel/${id}/all`} />
-        {c.schedule.length > 0 && <TodaySchedule c={c} />}
         {movies.length > 0 && <Row title="Movies" items={movies} />}
       </div>
+      {showSchedule && <ScheduleModal c={c} now={now} onClose={() => setShowSchedule(false)} />}
       <Footer />
     </div>
   )
@@ -391,24 +411,45 @@ function HeroBumper({ c }: { c: Channel }) {
   )
 }
 
-// The channel's daily time blocks, with the one on air now highlighted.
-function TodaySchedule({ c }: { c: Channel }) {
+// The whole day on the channel, opened from the live box. Scrolls to what's on now.
+function ScheduleModal({ c, now, onClose }: { c: Channel; now: Date; onClose: () => void }) {
   const cat = useCatalog()
-  const now = new Date()
-  const current = blockAt(c, now.getHours() * 60 + now.getMinutes())
-  return (
-    <section className="row today">
-      <h2 className="row-header"><span className="row-title">On today</span></h2>
-      <ol className="today-list">
-        {c.schedule.map(b => (
-          <li key={b.start} className={b === current ? 'on' : ''}>
-            <span className="today-time">{clockLabel(b.start)} – {clockLabel(b.end)}</span>
-            <span className="today-shows">{b.titleIds.map(t => cat.byId[t]?.name).filter(Boolean).join(' · ')}</span>
-            {b === current && <span className="live-pill"><i />ON NOW</span>}
-          </li>
-        ))}
-      </ol>
-      <p className="muted today-rest">Other times: the full line-up plays back-to-back.</p>
-    </section>
+  const { openInfo } = useBrowse()
+  const day = daySchedule(cat, c.id, now)
+  const nowRef = useRef<HTMLLIElement>(null)
+  useEffect(() => {
+    nowRef.current?.scrollIntoView({ block: 'center' })
+    const key = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
+    window.addEventListener('keydown', key)
+    document.body.style.overflow = 'hidden'
+    return () => { window.removeEventListener('keydown', key); document.body.style.overflow = '' }
+  }, [])
+  const minute = (d: Date) => d.getHours() * 60 + d.getMinutes()
+  return createPortal(
+    <div className="sched-bg" onClick={onClose}>
+      <div className="sched-modal" role="dialog" aria-label={`Today on ${c.name}`} onClick={e => e.stopPropagation()} style={cssVars({ '--accent': c.accent })}>
+        <header>
+          <div>
+            <h2>Today on {c.name}</h2>
+            <small>{now.toLocaleDateString([], { weekday: 'long', day: 'numeric', month: 'long' })} · times in your time zone</small>
+          </div>
+          <button className="sched-close" onClick={onClose} aria-label="Close"><Close size={22} /></button>
+        </header>
+        <ol className="sched-list">
+          {day.map(e => {
+            const on = e.start <= now && now < e.end
+            const block = blockAt(c, minute(e.start))
+            return (
+              <li key={e.start.getTime()} ref={on ? nowRef : undefined} className={on ? 'on' : e.end <= now ? 'past' : ''}>
+                <time>{timeLabel(e.start)} – {timeLabel(e.end)}</time>
+                <button type="button" onClick={() => { onClose(); openInfo(e.title) }}>{e.title.name}</button>
+                {on ? <span className="live-pill"><i />ON NOW</span> : block && <small className="sched-block">{clockLabel(block.start)}–{clockLabel(block.end)} block</small>}
+              </li>
+            )
+          })}
+        </ol>
+      </div>
+    </div>,
+    document.body,
   )
 }

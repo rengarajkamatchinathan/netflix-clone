@@ -248,10 +248,32 @@ body.adm-modal-open { overflow: hidden; }
 .adm-section-switch.busy { opacity: .6; pointer-events: none; }
 
 /* Channel schedule */
-.adm-daybar { position: relative; height: 26px; margin-bottom: 18px; background: var(--panel-2); border-radius: 4px; }
-.adm-daybar span { position: absolute; top: 0; bottom: 0; border-radius: 3px; opacity: .85; }
-.adm-daybar i { position: absolute; top: 100%; transform: translateX(-50%); font-style: normal; font-size: 11px; color: var(--muted); padding-top: 2px; }
-.adm-daybar i:first-of-type { transform: none; }
+.sch { display: flex; flex-direction: column; gap: 10px; }
+.sch-tools { display: flex; gap: 8px; flex-wrap: wrap; }
+.sch-body { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr); gap: 16px; align-items: start; }
+.sch-scroll { max-height: 56vh; overflow-y: auto; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); }
+.sch-day { position: relative; margin-left: 52px; cursor: copy; }
+.sch-hour { position: absolute; left: 0; right: 0; border-top: 1px solid var(--line); pointer-events: none; }
+.sch-hour span { position: absolute; left: -48px; top: -7px; font-size: 11px; color: var(--muted); }
+.sch-block { position: absolute; left: 4px; right: 8px; border-radius: 4px; overflow: hidden; cursor: grab; touch-action: none; user-select: none;
+  border: 1px solid rgba(255, 255, 255, .18); box-shadow: 0 1px 3px rgba(0, 0, 0, .4); display: flex; align-items: flex-start; }
+.sch-block:active { cursor: grabbing; }
+.sch-block.sel { outline: 2px solid; outline-offset: 1px; z-index: 2; }
+.sch-block.empty { background: repeating-linear-gradient(45deg, #3b2e12, #3b2e12 6px, #2c230e 6px, #2c230e 12px) !important; }
+.sch-text { flex: 1; min-width: 0; padding: 3px 8px; font-size: 12px; line-height: 1.35; color: #f2f2f2; overflow: hidden; }
+.sch-text b { margin-right: 4px; }
+.sch-x { flex: none; width: 22px; height: 22px; margin: 2px; border-radius: 50%; font-size: 11px; color: #ddd; opacity: 0; }
+.sch-block:hover .sch-x, .sch-block.sel .sch-x { opacity: 1; }
+.sch-x:hover { background: rgba(0, 0, 0, .4); color: #fff; }
+.sch-handle { position: absolute; left: 0; right: 0; height: 7px; cursor: ns-resize; touch-action: none; z-index: 1; }
+.sch-handle.top { top: 0; }
+.sch-handle.bottom { bottom: 0; }
+.sch-handle::after { content: ''; position: absolute; left: 50%; width: 22px; height: 3px; margin-left: -11px; border-radius: 2px; background: rgba(255, 255, 255, .55); opacity: 0; }
+.sch-handle.top::after { top: 2px; }
+.sch-handle.bottom::after { bottom: 2px; }
+.sch-block:hover .sch-handle::after, .sch-block.sel .sch-handle::after { opacity: 1; }
+.sch-side { display: flex; flex-direction: column; gap: 10px; position: sticky; top: 0; }
+@media (max-width: 760px) { .sch-body { grid-template-columns: 1fr; } .sch-side { position: static; } }
 .adm-block { display: flex; flex-direction: column; gap: 10px; padding: 12px; background: var(--panel); border: 1px solid var(--line); border-radius: 6px; }
 .adm-block-head { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
 .adm-block-head label { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 14px; }

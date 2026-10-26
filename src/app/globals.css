@@ -752,10 +752,45 @@ img.avatar { object-fit: cover; background: #222; }
 .history-error { color: #ff8a92; }
 @media (max-width: 560px) { .history-art { width: 96px; } }
 
-/* ---------- Channel "On today" ---------- */
-.today-list { list-style: none; padding: 0; margin: 0 var(--gutter); display: flex; flex-direction: column; gap: 2px; max-width: 900px; }
-.today-list li { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 18px; padding: 12px 16px; background: rgba(255, 255, 255, .04); border-radius: 4px; }
-.today-list li.on { background: rgba(255, 255, 255, .1); box-shadow: inset 3px 0 0 var(--accent, var(--red)); }
-.today-time { flex: none; min-width: 170px; font-weight: 700; }
-.today-shows { flex: 1; min-width: 0; color: var(--text-2); }
-.today-rest { margin: 10px var(--gutter) 0; font-size: 14px; }
+/* Channel hero: up next with times */
+.now-box .now-meta { margin-top: 2px; }
+.up-next { list-style: none; padding: 0; margin: 10px 0 0; display: flex; flex-direction: column; gap: 4px; border-top: 1px solid rgba(255, 255, 255, .15); padding-top: 8px;
+  transition: opacity .8s ease, max-height 1s ease, margin 1s ease, padding 1s ease; max-height: 8em; overflow: hidden; }
+.up-next li { display: flex; gap: 12px; font-size: 13px; color: #ccc; }
+.up-next time { flex: none; min-width: 64px; color: #fff; font-weight: 700; }
+.up-next button { background: none; border: 0; padding: 0; color: inherit; font: inherit; cursor: pointer; text-align: left; }
+.up-next button:hover { color: #fff; text-decoration: underline; }
+.channel-hero.compact .up-next { opacity: 0; max-height: 0; margin: 0; padding-top: 0; border-top-color: transparent; }
+.channel-hero.compact .now-box:hover .up-next { opacity: 1; max-height: 8em; margin-top: 10px; padding-top: 8px; border-top-color: rgba(255, 255, 255, .15); }
+.channel-hero.compact .now-box:hover p { opacity: 1; max-height: 3em; }
+
+/* Channel: full day schedule */
+.now-box { position: relative; }
+.full-schedule-btn { position: absolute; right: 10px; bottom: 8px; display: inline-flex; align-items: center; gap: 2px; background: none; border: 0; color: #ccc; font: inherit; font-size: 12px; font-weight: 700; cursor: pointer; padding: 4px 6px; border-radius: 3px;
+  opacity: 0; transform: translateY(4px); pointer-events: none; transition: opacity .3s ease, transform .3s ease; }
+.full-schedule-btn:hover { color: #fff; background: rgba(255, 255, 255, .1); }
+/* Hidden until the box is hovered (or focused); the box grows to make room. */
+.now-box { transition: padding-bottom .3s ease; }
+.now-box:hover, .now-box:focus-within { padding-bottom: 34px; }
+.now-box:hover .full-schedule-btn, .now-box:focus-within .full-schedule-btn { opacity: 1; transform: none; pointer-events: auto; }
+@media (hover: none) {
+  .channel-hero .now-box { padding-bottom: 34px; }
+  .full-schedule-btn { opacity: 1; transform: none; pointer-events: auto; }
+}
+.sched-bg { position: fixed; inset: 0; z-index: 100; background: rgba(0, 0, 0, .7); display: grid; place-items: center; padding: 16px; animation: sched-fade .2s ease; }
+@keyframes sched-fade { from { opacity: 0; } }
+.sched-modal { width: min(640px, 100%); max-height: min(80vh, 100%); display: flex; flex-direction: column; background: #181818; border-radius: 8px; box-shadow: 0 20px 60px rgba(0, 0, 0, .7); overflow: hidden; }
+.sched-modal header { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; padding: 20px 20px 14px; border-bottom: 1px solid rgba(255, 255, 255, .1); }
+.sched-modal h2 { font-size: 22px; margin: 0 0 4px; }
+.sched-modal header small { color: var(--muted); }
+.sched-close { background: none; border: 0; color: #ccc; cursor: pointer; padding: 4px; border-radius: 50%; }
+.sched-close:hover { color: #fff; background: rgba(255, 255, 255, .1); }
+.sched-list { list-style: none; margin: 0; padding: 8px 0; overflow-y: auto; }
+.sched-list li { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 16px; padding: 10px 20px; }
+.sched-list li.past { opacity: .45; }
+.sched-list li.on { background: rgba(255, 255, 255, .08); box-shadow: inset 3px 0 0 var(--accent, var(--red)); }
+.sched-list time { flex: none; min-width: 120px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.sched-list button { flex: 1; min-width: 0; background: none; border: 0; color: inherit; font: inherit; text-align: left; cursor: pointer; padding: 0; }
+.sched-list button:hover { text-decoration: underline; }
+.sched-block { color: var(--muted); font-size: 12px; }
+@media (max-width: 560px) { .sched-list time { min-width: 0; width: 100%; } }
