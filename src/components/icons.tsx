@@ -42,4 +42,5 @@ export const User = (p: IconProps) => <I sw={1.6} {...p}><circle cx="12" cy="8" 
 export const HelpCircle = (p: IconProps) => <I sw={1.6} {...p}><circle cx="12" cy="12" r="9" /><path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .9-1 1.5v.7M12 17v.01" /></I>
 export const Shield = (p: IconProps) => <I sw={1.6} {...p}><path d="M12 3 4.5 6v5.5c0 4.6 3.2 8.3 7.5 9.5 4.3-1.2 7.5-4.9 7.5-9.5V6L12 3z" /><path d="m9 12 2 2 4-4" /></I>
 export const Grip = (p: IconProps) => <I fill="currentColor" sw={0} {...p}><circle cx="9" cy="6" r="1.5" /><circle cx="15" cy="6" r="1.5" /><circle cx="9" cy="12" r="1.5" /><circle cx="15" cy="12" r="1.5" /><circle cx="9" cy="18" r="1.5" /><circle cx="15" cy="18" r="1.5" /></I>
+export const Clock = (p: IconProps) => <I sw={1.6} {...p}><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></I>
 export const Trash = (p: IconProps) => <I sw={1.8} {...p}><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3" /></I>

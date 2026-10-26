@@ -81,7 +81,6 @@ ul { list-style: none; }
 .browse-trigger { display: flex; align-items: center; gap: 6px; font-size: 14px; font-weight: 600; padding: 20px 0; }
 .nav-right { margin-left: auto; display: flex; align-items: center; gap: 15px; }
 .nav-right button { display: grid; place-items: center; }
-.kids { font-size: 14px; }
 .search { display: flex; align-items: center; height: 34px; padding: 0 6px; border: 1px solid transparent; transition: background .3s, border-color .3s; }
 .search input { width: 0; background: none; border: 0; outline: none; font-size: 14px; transition: width .3s var(--ease); }
 .search.open { border-color: rgba(255, 255, 255, .85); background: rgba(0, 0, 0, .75); }
@@ -108,7 +107,12 @@ ul { list-style: none; }
 .notif:hover { background: rgba(255, 255, 255, .05); }
 .notif b { color: #fff; font-weight: 400; }
 .notif small { color: var(--dim); }
-.notif-art { flex: none; width: 112px; height: 63px; border-radius: 2px; }
+.notif-art { flex: none; width: 112px; height: 63px; border-radius: 2px; background: #333 center / cover no-repeat; }
+button.notif { width: 100%; text-align: left; background: none; border: 0; border-bottom: 1px solid rgba(255, 255, 255, .15); font: inherit; cursor: pointer; }
+.notif p { margin: 2px 0; }
+.notif.unread { box-shadow: inset 3px 0 0 var(--red); }
+.notif-empty { padding: 18px 14px; color: var(--muted); margin: 0; }
+.bell .menu-panel { max-height: 70vh; overflow-y: auto; }
 
 /* ============ Billboard ============ */
 .page { min-height: 100vh; overflow-x: hidden; }
@@ -473,7 +477,7 @@ ul { list-style: none; }
 @media (max-width: 800px) {
   :root { --gutter: 16px; }
   .nav { height: 56px; }
-  .kids, .bell { display: none; }
+  .bell { display: none; }
   .search.open input { width: 130px; }
   .billboard { height: 120vw; min-height: 0; max-height: 80vh; }
   .billboard-info { width: auto; right: var(--gutter); bottom: 22%; }
@@ -723,3 +727,35 @@ img.avatar { object-fit: cover; background: #222; }
 
 /* "S2:E5" on Continue Watching cards */
 .card-resume { position: absolute; left: 8px; bottom: 16px; z-index: 2; padding: 2px 6px; border-radius: 3px; background: rgba(0, 0, 0, .75); color: #fff; font-size: 11px; font-weight: 700; letter-spacing: .03em; }
+
+/* ---------- Search suggestions ---------- */
+.search-suggest { margin: -14px 0 28px; display: flex; flex-direction: column; gap: 12px; }
+.did-you-mean { font-size: 18px; color: var(--text-2); margin: 0; }
+.did-you-mean button, .suggest-chips button { background: none; border: 0; font: inherit; cursor: pointer; }
+.did-you-mean button { color: #fff; font-weight: 700; text-decoration: underline; padding: 0; }
+.suggest-chips { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; color: var(--muted); font-size: 14px; }
+.suggest-chips button { color: #fff; border: 1px solid rgba(255, 255, 255, .3); border-radius: 999px; padding: 4px 12px; font-size: 14px; }
+.suggest-chips button:hover { border-color: #fff; background: rgba(255, 255, 255, .08); }
+
+/* ---------- Viewing history ---------- */
+.history-day { margin-bottom: 32px; max-width: 900px; }
+.history-day h2 { font-size: 16px; color: var(--muted); font-weight: 500; margin-bottom: 10px; }
+.history-day ul { list-style: none; padding: 0; margin: 0; }
+.history-row { display: flex; align-items: center; gap: 16px; padding: 10px 0; border-bottom: 1px solid rgba(255, 255, 255, .1); }
+.history-row button { background: none; border: 0; color: inherit; font: inherit; cursor: pointer; padding: 0; text-align: left; }
+.history-art { flex: none; width: 140px; aspect-ratio: 16 / 9; border-radius: 3px; overflow: hidden; }
+.history-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.history-main b { font-size: 16px; }
+.history-main small { color: var(--muted); }
+.history-remove { color: var(--muted); width: 36px; height: 36px; display: grid; place-items: center; border-radius: 50%; }
+.history-remove:hover { color: #fff; background: rgba(255, 255, 255, .1); }
+.history-error { color: #ff8a92; }
+@media (max-width: 560px) { .history-art { width: 96px; } }
+
+/* ---------- Channel "On today" ---------- */
+.today-list { list-style: none; padding: 0; margin: 0 var(--gutter); display: flex; flex-direction: column; gap: 2px; max-width: 900px; }
+.today-list li { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 18px; padding: 12px 16px; background: rgba(255, 255, 255, .04); border-radius: 4px; }
+.today-list li.on { background: rgba(255, 255, 255, .1); box-shadow: inset 3px 0 0 var(--accent, var(--red)); }
+.today-time { flex: none; min-width: 170px; font-weight: 700; }
+.today-shows { flex: 1; min-width: 0; color: var(--text-2); }
+.today-rest { margin: 10px var(--gutter) 0; font-size: 14px; }

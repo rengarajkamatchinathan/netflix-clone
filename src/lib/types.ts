@@ -9,6 +9,10 @@ export type Bumper = { kind: 'youtube'; ytId: string }
 
 export interface ChannelColors { bg: string; accent: string; accent2: string }
 
+// A daily time block on a channel, in minutes from midnight (end may be 1440). Its shows play
+// back-to-back during the block; outside every block the whole line-up plays.
+export interface ScheduleBlock { start: number; end: number; titleIds: string[] }
+
 // --- /api/catalog ---
 
 export interface RawTitle {
@@ -36,6 +40,7 @@ export interface RawChannel {
   colors: Partial<ChannelColors>
   bumpers: string[] // YouTube links
   hidden: boolean
+  schedule: ScheduleBlock[]
   titleIds: string[]
   image: string | null // uploaded logo, served from /api/channels/<id>/logo
 }
@@ -55,9 +60,21 @@ export interface Profile {
   progress: Record<string, number>
   position: Record<string, WatchPosition>
   recent: string[] // title ids, most recently played first
+  notifSeenAt: string // notifications after this are unread
 }
 
 export interface WatchPosition { season: number; episode: number }
+
+// --- /api/notifications ---
+
+export type NotificationKind = 'title' | 'episodes' | 'channel' | 'announcement'
+export interface AppNotification {
+  id: number; kind: NotificationKind; titleId: string | null; channelId: string | null; heading: string; body: string; createdAt: string
+}
+
+// --- /api/profiles/:id/history ---
+
+export interface HistoryEntry { titleId: string; season: number | null; episode: number | null; playedAt: string }
 
 export interface AccountUser {
   id: number

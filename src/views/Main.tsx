@@ -1,15 +1,16 @@
 'use client'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { useApp } from '@/context/AppContext'
 import { useCatalog } from '@/context/CatalogContext'
-import { becauseYouWatched, channelTitles, continueWatching, nowPlaying, randomBumper, rowsFor, search, type Channel, type Title } from '@/lib/catalog'
-import type { Bumper } from '@/lib/types'
+import { becauseYouWatched, blockAt, channelTitles, clockLabel, continueWatching, nowPlaying, randomBumper, rowsFor, search, searchSuggestions, type Channel, type Title } from '@/lib/catalog'
+import { api } from '@/lib/api'
+import type { Bumper, HistoryEntry } from '@/lib/types'
 import { YouTubeClip } from './Player'
-import { cssVars, Footer, Navbar, PosterArt } from '@/components/ui'
-import { Billboard, ChannelStrip, ChannelTile, Row, TitleCard, useBrowse } from '@/components/Browse'
-import { ChevronDown, ChevronLeft, Info, Mute, Play, Search as SearchIcon, Volume } from '@/components/icons'
+import { cssVars, Footer, Navbar, PosterArt, timeAgo } from '@/components/ui'
+import { Billboard, ChannelStrip, ChannelTile, posLabel, Row, TitleCard, useBrowse } from '@/components/Browse'
+import { ChevronDown, ChevronLeft, Close, Info, Mute, Play, Search as SearchIcon, Volume } from '@/components/icons'
 
 const HEADINGS: Record<string, string> = { tv: 'TV Shows', movie: 'Films', new: 'New & Popular' }
 
@@ -47,12 +48,13 @@ export function BrowsePage({ type }: { type?: string }) {
   )
 }
 
-function Grid({ heading, items, empty, suggestions }: { heading?: string; items: Title[]; empty: string; suggestions?: boolean }) {
+function Grid({ heading, items, empty, suggestions, extra }: { heading?: string; items: Title[]; empty: string; suggestions?: boolean; extra?: ReactNode }) {
   return (
     <div className="page">
       <Navbar />
       <div className="grid-page">
         {heading && <h1>{heading}</h1>}
+        {extra}
         {items.length ? <div className="grid">{items.map(t => <TitleCard key={t.id} t={t} />)}</div> : (
           <div className="empty">
             <p>{empty}</p>
@@ -72,9 +74,73 @@ export function MyListPage() {
 
 export function SearchPage() {
   const q = useSearchParams().get('q') || ''
-  const res = search(useCatalog(), q)
-  return <Grid heading={res.length ? `Explore titles related to: ${q}` : ''} items={res} suggestions
+  const cat = useCatalog()
+  const router = useRouter()
+  const { openInfo } = useBrowse()
+  const res = search(cat, q)
+  const { related, didYouMean } = searchSuggestions(cat, q)
+  const pick = (term: string) => router.replace(`/search?q=${encodeURIComponent(term)}`)
+  const extra = (related.length > 0 || didYouMean.length > 0) && (
+    <div className="search-suggest">
+      {didYouMean.length > 0 && <p className="did-you-mean">Did you mean {didYouMean.map((t, i) => (
+        <span key={t.id}>{i > 0 && (i === didYouMean.length - 1 ? ' or ' : ', ')}<button onClick={() => openInfo(t)}>{t.name}</button></span>
+      ))}?</p>}
+      {related.length > 0 && <div className="suggest-chips"><span>More to explore:</span>{related.map(r => <button key={r} onClick={() => pick(r)}>{r}</button>)}</div>}
+    </div>
+  )
+  return <Grid heading={res.length ? `Explore titles related to: ${q}` : ''} items={res} suggestions={!didYouMean.length} extra={extra}
     empty={`Your search for "${q}" did not have any matches.`} />
+}
+
+// Every Play press for the profile, newest first, grouped by day. Removing a show also clears
+// its progress, so it leaves Continue Watching and recommendations.
+export function HistoryPage() {
+  const { profile, forgetTitle } = useApp()
+  const cat = useCatalog()
+  const { openInfo } = useBrowse()
+  const [rows, setRows] = useState<HistoryEntry[] | null>(null)
+  const [error, setError] = useState('')
+  useEffect(() => {
+    if (profile) api<HistoryEntry[]>(`/profiles/${profile.id}/history`).then(setRows, e => setError(e instanceof Error ? e.message : String(e)))
+  }, [profile?.id])
+  const remove = async (titleId: string) => {
+    try { await forgetTitle(titleId); setRows(r => r && r.filter(x => x.titleId !== titleId)) } catch (e) { setError(e instanceof Error ? e.message : String(e)) }
+  }
+  const day = (iso: string) => new Date(iso).toLocaleDateString([], { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
+  const known = (rows || []).filter(r => cat.byId[r.titleId])
+  const days = [...new Set(known.map(r => day(r.playedAt)))]
+
+  return (
+    <div className="page">
+      <Navbar />
+      <div className="grid-page history-page">
+        <h1>Viewing history</h1>
+        {profile && <p className="muted lead">What {profile.name} has played. Removing a show also clears its progress and recommendations.</p>}
+        {error && <p className="history-error">{error}</p>}
+        {!rows ? (!error && <p className="muted">Loading…</p>) : !known.length ? <div className="empty"><p>Nothing watched yet.</p></div> : days.map(d => (
+          <section key={d} className="history-day">
+            <h2>{d}</h2>
+            <ul>
+              {known.filter(r => day(r.playedAt) === d).map((r, i) => {
+                const t = cat.byId[r.titleId]
+                return (
+                  <li key={`${r.titleId}-${r.playedAt}-${i}`} className="history-row">
+                    <button className="history-art" onClick={() => openInfo(t)}><PosterArt t={t} /></button>
+                    <button className="history-main" onClick={() => openInfo(t)}>
+                      <b>{t.name}</b>
+                      <small>{[r.season && r.episode ? posLabel({ season: r.season, episode: r.episode }) : null, new Date(r.playedAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }), timeAgo(r.playedAt)].filter(Boolean).join(' · ')}</small>
+                    </button>
+                    <button className="history-remove" aria-label={`Remove ${t.name} from history`} title="Remove from history" onClick={() => remove(r.titleId)}><Close size={18} /></button>
+                  </li>
+                )
+              })}
+            </ul>
+          </section>
+        ))}
+      </div>
+      <Footer />
+    </div>
+  )
 }
 
 export function ChannelsPage() {
@@ -154,6 +220,7 @@ export function ChannelPage({ id }: { id: string }) {
         <Row title={`Top 10 on ${c.name}`} items={shows.slice(0, 10)} top10 />
         {because && <Row title={`Because You Watched ${because.source.name}`} items={because.items} />}
         <Row title={`All on ${c.name}`} items={shows} viewAll={`/channel/${id}/all`} />
+        {c.schedule.length > 0 && <TodaySchedule c={c} />}
         {movies.length > 0 && <Row title="Movies" items={movies} />}
       </div>
       <Footer />
@@ -321,5 +388,27 @@ function HeroBumper({ c }: { c: Channel }) {
         {muted ? <Mute size={20} /> : <Volume size={20} />}
       </button>
     </>
+  )
+}
+
+// The channel's daily time blocks, with the one on air now highlighted.
+function TodaySchedule({ c }: { c: Channel }) {
+  const cat = useCatalog()
+  const now = new Date()
+  const current = blockAt(c, now.getHours() * 60 + now.getMinutes())
+  return (
+    <section className="row today">
+      <h2 className="row-header"><span className="row-title">On today</span></h2>
+      <ol className="today-list">
+        {c.schedule.map(b => (
+          <li key={b.start} className={b === current ? 'on' : ''}>
+            <span className="today-time">{clockLabel(b.start)} – {clockLabel(b.end)}</span>
+            <span className="today-shows">{b.titleIds.map(t => cat.byId[t]?.name).filter(Boolean).join(' · ')}</span>
+            {b === current && <span className="live-pill"><i />ON NOW</span>}
+          </li>
+        ))}
+      </ol>
+      <p className="muted today-rest">Other times: the full line-up plays back-to-back.</p>
+    </section>
   )
 }

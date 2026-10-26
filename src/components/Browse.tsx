@@ -1,10 +1,11 @@
 'use client'
-import { createContext, useContext, useEffect, useLayoutEffect, useRef, useState, type MouseEvent, type ReactNode } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, type MouseEvent, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import Link from 'next/link'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { useApp } from '@/context/AppContext'
 import { useCatalog } from '@/context/CatalogContext'
+import { BrowseCtx, useBrowse, type CardRect, type Origin, type Rect } from '@/context/BrowseContext'
 import { hash, type Channel, type Title } from '@/lib/catalog'
 import type { WatchPosition } from '@/lib/types'
 import { cssVars, PosterArt } from './ui'
@@ -14,24 +15,7 @@ const MOODS = ['Exciting', 'Feel-good', 'Witty', 'Suspenseful', 'Heartfelt', 'Im
 export const moodsFor = (t: Title) => [0, 1, 2].map(i => MOODS[(hash(t.id) + i * 4) % MOODS.length]).filter((m, i, a) => a.indexOf(m) === i)
 const lengthOf = (t: Title) => (t.type === 'tv' ? (t.seasons ? `${t.seasons} Season${t.seasons > 1 ? 's' : ''}` : 'Series') : t.duration)
 
-type Origin = 'left' | 'right' | 'center'
-interface CardRect { left: number; top: number; width: number; height: number; wide: boolean }
-type Rect = { left: number; top: number; width: number; height: number } | null
-
 /* ---------- Shared browse state: hover preview + info modal ---------- */
-
-interface BrowseValue {
-  openInfo: (t: Title, rect?: Rect) => void
-  openTitle: (t: Title, rect?: Rect) => void
-  playTitle: (t: Title) => void
-  setPreview: (p: { t: Title; origin: Origin; rect: CardRect } | null) => void
-}
-const BrowseCtx = createContext<BrowseValue | null>(null)
-export function useBrowse(): BrowseValue {
-  const v = useContext(BrowseCtx)
-  if (!v) throw new Error('useBrowse must be used inside BrowseProvider')
-  return v
-}
 
 export function BrowseProvider({ children }: { children: ReactNode }) {
   const [info, setInfo] = useState<{ t: Title; rect: Rect } | null>(null)
@@ -39,15 +23,21 @@ export function BrowseProvider({ children }: { children: ReactNode }) {
   const pathname = usePathname()
   const search = useSearchParams().toString()
   const router = useRouter()
-  const { recordPlay } = useApp()
+  const { profile, recordPlay } = useApp()
   useEffect(() => { setPreview(null); setInfo(null) }, [pathname, search])
 
   const openInfo = (t: Title, rect: Rect = null) => { setPreview(null); setInfo({ t, rect }) }
   const openLink = (t: Title) => { setPreview(null); window.open(t.link!, '_blank', 'noopener,noreferrer') }
   // Clicking a title always opens the preview modal; its Play button is what opens the link.
   const openTitle = (t: Title, rect: Rect = null) => openInfo(t, rect)
-  // Play: open its link in a new tab if it has one, otherwise the built-in player.
-  const playTitle = (t: Title) => { recordPlay(t.id); if (t.link) openLink(t); else router.push(`/watch/${t.id}`) }
+  // Play: open its link in a new tab if it has one, otherwise the built-in player at the
+  // episode the profile is up to.
+  const playTitle = (t: Title) => {
+    recordPlay(t.id)
+    if (t.link) return openLink(t)
+    const pos = t.type === 'tv' ? profile?.position[t.id] : undefined
+    router.push(`/watch/${t.id}${pos ? `?ep=${pos.episode}` : ''}`)
+  }
   return (
     <BrowseCtx.Provider value={{ openInfo, openTitle, playTitle, setPreview }}>
       {children}
@@ -92,7 +82,10 @@ function LikeButton({ big }: { big?: boolean }) {
   )
 }
 
-const posLabel = (p: WatchPosition) => `S${p.season}:E${p.episode}`
+export { useBrowse }
+
+export const posLabel = (p: WatchPosition) => `S${p.season}:E${p.episode}`
+const resumeLabel = (t: Title, p?: WatchPosition) => (t.type === 'tv' && p ? `Resume ${posLabel(p)}` : 'Play')
 
 const clamp = (v: number, max: number) => Math.max(1, Math.min(max, Math.round(v) || 1))
 function StepField({ label, value, max, set }: { label: string; value: number; max: number; set: (n: number) => void }) {
@@ -168,7 +161,7 @@ function Preview({ t, rect, origin, onClose }: { t: Title; rect: CardRect; origi
       </div>
       <div className="preview-info">
         <div className="preview-btns">
-          <TipButton tip="Play" className="circle white" onClick={() => playTitle(t)}><Play size={16} /></TipButton>
+          <TipButton tip={resumeLabel(t, profile?.position[t.id])} className="circle white" onClick={() => playTitle(t)}><Play size={16} /></TipButton>
           <ListButton t={t} />
           <LikeButton />
           <TipButton tip="Episodes & info" className="circle push" onClick={() => openInfo(t, ref.current!.getBoundingClientRect())}><ChevronDown size={18} /></TipButton>
@@ -268,6 +261,7 @@ export function Row({ title, items, top10, link, viewAll, resume }: { title: str
 
 export function Billboard({ t, rank }: { t: Title; rank?: number }) {
   const { openInfo, playTitle } = useBrowse()
+  const { profile } = useApp()
   const [compact, setCompact] = useState(false)
   const [run, setRun] = useState(0)
   useEffect(() => { setCompact(false); const h = setTimeout(() => setCompact(true), 5000); return () => clearTimeout(h) }, [t.id, run])
@@ -284,7 +278,7 @@ export function Billboard({ t, rank }: { t: Title; rank?: number }) {
           <p className="synopsis">{t.synopsis}</p>
         </div>
         <div className="btns">
-          <button className="btn white" onClick={() => playTitle(t)}><Play size={26} /> Play</button>
+          <button className="btn white" onClick={() => playTitle(t)}><Play size={26} /> {resumeLabel(t, profile?.position[t.id])}</button>
           <button className="btn grey" onClick={() => openInfo(t)}><Info size={26} /> More Info</button>
         </div>
       </div>
@@ -341,7 +335,7 @@ export function DetailModal({ t, rect, onClose }: { t: Title; rect: Rect; onClos
           <div className="modal-hero-info">
             <h1 className="title-treatment">{t.name}</h1>
             <div className="btns">
-              <button className="btn white" onClick={() => playTitle(t)}><Play size={24} /> {pos ? `Resume ${posLabel(pos)}` : 'Play'}</button>
+              <button className="btn white" onClick={() => playTitle(t)}><Play size={24} /> {resumeLabel(t, pos)}</button>
               <ListButton t={t} big />
               <LikeButton big />
             </div>

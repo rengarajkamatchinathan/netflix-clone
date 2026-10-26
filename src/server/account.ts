@@ -15,7 +15,7 @@ const HEX = /^#[0-9a-f]{6}$/i
 // Everything the app needs about the signed-in account.
 export async function meFor(user: Pick<SessionUser, 'id' | 'email' | 'role' | 'created_at'>): Promise<Me> {
   const profiles = await many(
-    `select p.id, p.name, p.avatar_id, p.color, p.is_kids, a.url as avatar_url
+    `select p.id, p.name, p.avatar_id, p.color, p.is_kids, p.notif_seen_at, a.url as avatar_url
      from profiles p left join avatars a on a.id = p.avatar_id where p.user_id = $1 order by p.id`, [user.id])
   const ids = profiles.map(p => p.id)
   const [list, progress, positions, recent, questions] = await Promise.all([
@@ -36,6 +36,7 @@ export async function meFor(user: Pick<SessionUser, 'id' | 'email' | 'role' | 'c
       progress: Object.fromEntries(progress.filter(x => x.profile_id === p.id).map(x => [x.title_id, x.pct])),
       recent: recent.filter(x => x.profile_id === p.id).map(x => x.title_id),
       position: Object.fromEntries(positions.filter(x => x.profile_id === p.id).map(x => [x.title_id, { season: x.season, episode: x.episode }])),
+      notifSeenAt: new Date(p.notif_seen_at).toISOString(),
     })),
   }
 }

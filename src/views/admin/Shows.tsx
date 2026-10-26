@@ -11,16 +11,25 @@ import type { AdminChannel, AdminTitleRow, TitleDetail } from './types'
 interface EpisodeRow { key: number; title: string; url: string }
 interface ShowForm {
   name: string; year: string; type: TitleType; genre: string; synopsis: string; category: string; maturity: string
-  image: string; poster: string; link: string; videos: EpisodeRow[]; channels: string[]; hidden: boolean
+  image: string; poster: string; link: string; videos: EpisodeRow[]; channels: string[]; hidden: boolean; publishAt: string
 }
 
-const EMPTY: ShowForm = { name: '', year: '', type: 'tv', genre: '', synopsis: '', category: '', maturity: '', image: '', poster: '', link: '', videos: [], channels: [], hidden: false }
+const EMPTY: ShowForm = { name: '', year: '', type: 'tv', genre: '', synopsis: '', category: '', maturity: '', image: '', poster: '', link: '', videos: [], channels: [], hidden: false, publishAt: '' }
 let rowSeq = 0
 const withKeys = (videos: { title: string | null; url: string }[]): EpisodeRow[] => videos.map(v => ({ title: v.title || '', url: v.url, key: ++rowSeq }))
 
+// "YYYY-MM-DDTHH:MM" in local time, as datetime-local inputs use it.
+const toLocalInput = (iso: string | null) => {
+  if (!iso) return ''
+  const d = new Date(iso)
+  return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16)
+}
+const isScheduled = (iso: string | null) => !!iso && new Date(iso) > new Date()
+const fmtWhen = (iso: string) => new Date(iso).toLocaleString([], { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })
+
 const toForm = (t: TitleDetail): ShowForm => ({
   name: t.name, year: t.year == null ? '' : String(t.year), type: t.type, genre: t.genre || '', synopsis: t.synopsis || '', category: t.category || '',
-  maturity: t.maturity || '', image: t.image || '', poster: t.poster || '', link: t.link || '', videos: withKeys(t.videos || []), channels: t.channels, hidden: t.hidden,
+  maturity: t.maturity || '', image: t.image || '', poster: t.poster || '', link: t.link || '', videos: withKeys(t.videos || []), channels: t.channels, hidden: t.hidden, publishAt: toLocalInput(t.publishAt),
 })
 
 type ImageStatusValue = 'none' | 'checking' | 'ok' | 'broken'
@@ -89,7 +98,10 @@ export function ShowModal({ id, initial, channels, onClose, onSaved, onDeleted }
     const badEp = form.videos.findIndex(v => !v.url.trim())
     if (badEp >= 0) { setTab('episodes'); return setErr(`Episode ${badEp + 1} needs a video link.`) }
     setBusy(true); setErr('')
-    const body = { ...form, year: form.year === '' ? null : Number(form.year), videos: form.videos.map(v => ({ title: v.title.trim() || null, url: v.url.trim() })) }
+    const body = {
+      ...form, year: form.year === '' ? null : Number(form.year), videos: form.videos.map(v => ({ title: v.title.trim() || null, url: v.url.trim() })),
+      publishAt: form.publishAt ? new Date(form.publishAt).toISOString() : null,
+    }
     try {
       const t = await api<TitleDetail>(id ? `/admin/titles/${encodeURIComponent(id)}` : '/admin/titles', { method: id ? 'PUT' : 'POST', body })
       await reloadCatalog()
@@ -139,6 +151,8 @@ export function ShowModal({ id, initial, channels, onClose, onSaved, onDeleted }
                 <TextField label="Age rating" value={form.maturity} onChange={v => set({ maturity: v })} placeholder="U/A 7+" maxLength={20} />
               </div>
               <Check label="Shown to viewers" hint="Hidden shows stay saved but don't appear anywhere on the site." checked={!form.hidden} onChange={v => set({ hidden: !v })} />
+              <TextField label="Publish on (optional)" type="datetime-local" value={form.publishAt} onChange={v => set({ publishAt: v })}
+                hint={form.publishAt ? `Viewers see it, and get a notification, from ${fmtWhen(new Date(form.publishAt).toISOString())}.` : 'Leave empty to publish as soon as it is saved.'} />
               <div className="adm-field">
                 <label>On channels</label>
                 <div className="adm-chips">
@@ -244,6 +258,11 @@ export function ShowsPage({ kind = 'all' }: { kind?: keyof typeof KINDS }) {
   const [q, setQ] = useState('')
   const [channel, setChannel] = useState('all')
   const [broken, setBroken] = useState<Set<string>>(() => new Set())
+  const [selected, setSelected] = useState<Set<string>>(() => new Set())
+  const [bulkBusy, setBulkBusy] = useState(false)
+  const [bulkDeleting, setBulkDeleting] = useState(false)
+  const toast = useToast()
+  const reloadCatalog = useReloadCatalog()
   const editing = params.get('edit')
   const creating = params.get('new') !== null
 
@@ -263,6 +282,22 @@ export function ShowsPage({ kind = 'all' }: { kind?: keyof typeof KINDS }) {
 
   if (!shows.data || !chans.data) return <Loading error={shows.error || chans.error} onRetry={() => { shows.reload(); chans.reload() }} />
   const chName = (id: string) => chans.data!.find(c => c.id === id)?.name || id
+  // Selection only counts shows still in the filtered list.
+  const picked = list.filter(t => selected.has(t.id))
+  const allPicked = list.length > 0 && picked.length === list.length
+  const toggle = (id: string) => setSelected(s => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n })
+  const bulk = async (action: string, extra: Record<string, unknown> = {}, done = '') => {
+    setBulkBusy(true)
+    try {
+      await api('/admin/titles/bulk', { method: 'POST', body: { ids: picked.map(t => t.id), action, ...extra } })
+      await Promise.all([reloadCatalog(), shows.reload()])
+      toast(done)
+      setSelected(new Set())
+    } catch (e) { toast(errorMessage(e), 'bad') }
+    setBulkBusy(false)
+  }
+  const n = picked.length
+  const many = `${n} show${n === 1 ? '' : 's'}`
   const open = (query: string) => router.push(`${pathname}?${query}`, { scroll: false })
   const close = () => router.replace(pathname, { scroll: false })
 
@@ -283,11 +318,32 @@ export function ShowsPage({ kind = 'all' }: { kind?: keyof typeof KINDS }) {
         </select>}
       </div>
       <p className="adm-muted">{type ? `${list.length} not on any channel. Adding one to a channel moves it to that channel's Shows tab.` : `${list.length} of ${shows.data.length} shows`}</p>
+      {list.length > 0 && (
+        <div className={`adm-bulk ${n ? 'on' : ''}`}>
+          <label className="adm-bulk-all"><input type="checkbox" checked={allPicked} ref={el => { if (el) el.indeterminate = n > 0 && !allPicked }}
+            onChange={() => setSelected(allPicked ? new Set() : new Set(list.map(t => t.id)))} aria-label="Select all shown" /> {n ? `${n} selected` : 'Select all'}</label>
+          {n > 0 && <>
+            <button className="adm-btn small" disabled={bulkBusy} onClick={() => bulk('show', {}, `${many} shown to viewers`)}>Show</button>
+            <button className="adm-btn small" disabled={bulkBusy} onClick={() => bulk('hide', {}, `${many} hidden`)}>Hide</button>
+            <select disabled={bulkBusy} value="" aria-label="Add selected shows to a channel" onChange={e => { const c = e.target.value; if (c) bulk('add-channel', { channelId: c }, `${many} added to ${chName(c)}`) }}>
+              <option value="">Add to channel…</option>
+              {chans.data.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+            <select disabled={bulkBusy} value="" aria-label="Remove selected shows from a channel" onChange={e => { const c = e.target.value; if (c) bulk('remove-channel', { channelId: c }, `${many} removed from ${chName(c)}`) }}>
+              <option value="">Remove from channel…</option>
+              {chans.data.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+            <button className="adm-btn small danger" disabled={bulkBusy} onClick={() => setBulkDeleting(true)}><Trash size={14} /> Delete</button>
+            <button className="adm-link" onClick={() => setSelected(new Set())}>Clear</button>
+          </>}
+        </div>
+      )}
       <ul className="adm-show-list">
         {list.map(t => {
           const p = problems(t)
           return (
-            <li key={t.id}>
+            <li key={t.id} className={`adm-show-item ${selected.has(t.id) ? 'picked' : ''}`}>
+              <input type="checkbox" className="adm-pick" checked={selected.has(t.id)} onChange={() => toggle(t.id)} aria-label={`Select ${t.name}`} />
               <button className="adm-show-row" onClick={() => open(`edit=${encodeURIComponent(t.id)}`)}>
                 <Thumb t={t} onBroken={id => setBroken(b => (b.has(id) ? b : new Set(b).add(id)))} />
                 <span className="adm-show-main">
@@ -295,6 +351,7 @@ export function ShowsPage({ kind = 'all' }: { kind?: keyof typeof KINDS }) {
                   <small>{[t.year, t.channels.map(chName).join(', ') || null, `${t.episodes} episode${t.episodes === 1 ? '' : 's'}`].filter(Boolean).join(' · ')}</small>
                 </span>
                 {t.hidden && <span className="adm-pill">Hidden</span>}
+                {isScheduled(t.publishAt) && <span className="adm-pill ok">Publishes {fmtWhen(t.publishAt!)}</span>}
                 {p.filter(x => !type || x !== 'Not on any channel').map(x => <span key={x} className="adm-pill warn">{x}</span>)}
                 <span className="adm-btn small">Edit</span>
               </button>
@@ -303,6 +360,12 @@ export function ShowsPage({ kind = 'all' }: { kind?: keyof typeof KINDS }) {
         })}
       </ul>
       {list.length === 0 && <p className="adm-empty">No {heading.toLowerCase()} match. <button className="adm-link" onClick={() => { setQ(''); setChannel('all') }}>Clear filters</button></p>}
+      {bulkDeleting && (
+        <ConfirmDelete title={`Delete ${many}?`} expected={String(n)} what="number of shows" onClose={() => setBulkDeleting(false)}
+          onConfirm={async confirm => { await bulk('delete', { confirm: Number(confirm) }, `${many} deleted`); setBulkDeleting(false) }}>
+          {picked.slice(0, 8).map(t => t.name).join(', ')}{n > 8 ? ` and ${n - 8} more` : ''} will be removed from every channel, My List and watch history.
+        </ConfirmDelete>
+      )}
       {(editing || creating) && (
         <ShowModal key={editing || 'new'} id={editing} initial={type && { type }} channels={chans.data} onClose={close}
           onSaved={() => shows.reload()} onDeleted={() => shows.reload()} />

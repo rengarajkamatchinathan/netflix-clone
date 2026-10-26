@@ -74,6 +74,8 @@ create table if not exists titles (
 );
 -- Hidden titles stay saved but viewers don't see them.
 alter table titles add column if not exists hidden boolean not null default false;
+-- Scheduled publishing: viewers see the title from this moment on (null = straight away).
+alter table titles add column if not exists publish_at timestamptz;
 
 -- Site-wide switches set in the admin panel, e.g. 'sections' = { "series": true, "movies": false }.
 create table if not exists settings (
@@ -127,3 +129,22 @@ create table if not exists play_events (
 );
 create index if not exists play_events_profile_idx on play_events(profile_id, played_at desc);
 create index if not exists play_events_title_idx on play_events(title_id, played_at);
+
+-- Daily time blocks per channel: [{ "start": 420, "end": 540, "titleIds": [...] }], minutes from midnight.
+-- Outside every block the channel plays its whole line-up.
+alter table channels add column if not exists schedule jsonb not null default '[]';
+
+-- What viewers see under the bell. Some are written automatically (new show, new episodes,
+-- channel goes live); announcements are written by an admin.
+create table if not exists notifications (
+  id serial primary key,
+  kind text not null check (kind in ('title', 'episodes', 'channel', 'announcement')),
+  title_id text references titles(id) on delete cascade,
+  channel_id text references channels(id) on delete cascade,
+  heading text not null,
+  body text not null default '',
+  created_at timestamptz not null default now()
+);
+create index if not exists notifications_created_idx on notifications(created_at desc);
+-- Notifications newer than this are unread for the profile.
+alter table profiles add column if not exists notif_seen_at timestamptz not null default now();

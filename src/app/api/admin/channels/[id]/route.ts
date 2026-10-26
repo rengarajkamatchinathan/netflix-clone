@@ -2,6 +2,7 @@ import { channelFields, channelOut, confirmMatches, getChannel } from '@/server/
 import { requireAdmin } from '@/server/auth'
 import { many, query } from '@/server/db'
 import { handle, json, readBody } from '@/server/http'
+import { notify } from '@/server/notifications'
 
 type P = { id: string }
 
@@ -17,8 +18,9 @@ export const PUT = handle<P>(async (req, { id }) => {
   await requireAdmin()
   const c = await getChannel(id)
   const f = channelFields(await readBody(req), c)
-  await query('update channels set name = $2, tagline = $3, colors = $4, bumpers = $5, hidden = $6 where id = $1',
-    [c.id, f.name, f.tagline, JSON.stringify(f.colors), JSON.stringify(f.bumpers), f.hidden])
+  await query('update channels set name = $2, tagline = $3, colors = $4, bumpers = $5, hidden = $6, schedule = $7 where id = $1',
+    [c.id, f.name, f.tagline, JSON.stringify(f.colors), JSON.stringify(f.bumpers), f.hidden, JSON.stringify(f.schedule)])
+  if (c.hidden && !f.hidden) await notify({ kind: 'channel', channelId: c.id, heading: 'Now live', body: `${f.name} is back on air` })
   return json(channelOut(await getChannel(c.id)))
 })
 

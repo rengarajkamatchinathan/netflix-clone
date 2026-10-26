@@ -1,11 +1,14 @@
 'use client'
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
+import { api } from '@/lib/api'
+import { useBrowseMaybe } from '@/context/BrowseContext'
 import Link from 'next/link'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { useApp } from '@/context/AppContext'
 import { useCatalog } from '@/context/CatalogContext'
 import type { Title } from '@/lib/catalog'
-import { Bell, ChevronDown, Close, HelpCircle, Pencil, Search, Shield, User } from './icons'
+import type { AppNotification } from '@/lib/types'
+import { Bell, ChevronDown, Clock, Close, HelpCircle, Pencil, Search, Shield, User } from './icons'
 
 // Inline style that also sets CSS custom properties (--name).
 export const cssVars = (v: Record<string, string | number | undefined>) => v as CSSProperties
@@ -93,6 +96,8 @@ export function Navbar() {
     return () => window.removeEventListener('scroll', on)
   }, [])
   useEffect(() => { if (pathname !== '/search') prevPath.current = pathname }, [pathname])
+  // Follow the URL when a search suggestion is picked.
+  useEffect(() => { const v = params.get('q'); if (v) { setQ(v); setSearchOpen(true) } }, [params])
 
   const onSearch = (v: string) => {
     setQ(v)
@@ -116,17 +121,14 @@ export function Navbar() {
             onChange={e => onSearch(e.target.value)} onBlur={() => !q && setSearchOpen(false)} />
           {q && <button className="search-clear" onMouseDown={e => { e.preventDefault(); onSearch('') }}><Close size={16} /></button>}
         </div>
-        <Link href="/channels" className="kids">Kids</Link>
-        <HoverMenu className="bell" trigger={<button aria-label="Notifications"><Bell size={22} /><span className="bell-dot">2</span></button>}>
-          <div className="notif"><span className="notif-art" style={{ background: 'linear-gradient(135deg,#ff3d00,#ffd600)' }} /><div><b>New on Jetix</b><p>Thunder Rangers: Season 2</p><small>2 days ago</small></div></div>
-          <div className="notif"><span className="notif-art" style={{ background: 'linear-gradient(135deg,#ff2e93,#29e3ff)' }} /><div><b>Live now on Pogo</b><p>Magic Pencil marathon</p><small>1 week ago</small></div></div>
-        </HoverMenu>
+        <NotificationBell />
         <HoverMenu className="account" trigger={<span className="account-trigger"><Avatar color={profile?.color} src={profile?.avatarUrl} /><ChevronDown size={14} className="caret" /></span>}>
           {user?.profiles.filter(p => p.id !== profile?.id).map(p => (
             <button key={p.id} onClick={() => setActiveProfile(p.id)}><Avatar color={p.color} src={p.avatarUrl} size={32} /> {p.name}</button>
           ))}
           <Link href="/profiles?manage=1"><Pencil size={22} /> Manage Profiles</Link>
           <Link href="/account"><User size={22} /> Account</Link>
+          <Link href="/history"><Clock size={22} /> Viewing history</Link>
           {user?.role === 'admin' && <Link href="/admin"><Shield size={22} /> Admin panel</Link>}
           <a href="#"><HelpCircle size={22} /> Help Centre</a>
           <hr />
@@ -134,6 +136,60 @@ export function Navbar() {
         </HoverMenu>
       </div>
     </header>
+  )
+}
+
+export const timeAgo = (iso: string) => {
+  const s = Math.max(0, (Date.now() - new Date(iso).getTime()) / 1000)
+  const [n, unit] = s < 3600 ? [Math.floor(s / 60), 'minute'] : s < 86400 ? [Math.floor(s / 3600), 'hour'] : s < 7 * 86400 ? [Math.floor(s / 86400), 'day'] : [Math.floor(s / (7 * 86400)), 'week']
+  return n < 1 ? 'just now' : `${n} ${unit}${n === 1 ? '' : 's'} ago`
+}
+
+// Notifications for the active profile: new shows and channels it can see, new episodes of
+// shows it follows (My List or played), and admin announcements. Opening the menu marks them read.
+function NotificationBell() {
+  const { profile, markNotificationsSeen } = useApp()
+  const cat = useCatalog()
+  const browse = useBrowseMaybe()
+  const router = useRouter()
+  const [items, setItems] = useState<AppNotification[]>([])
+  const [readBefore, setReadBefore] = useState<string | null>(null) // still highlighted while the menu is open
+  useEffect(() => { api<AppNotification[]>('/notifications').then(setItems, () => {}) }, [profile?.id])
+  if (!profile) return null
+
+  const visible = new Set(cat.titles.map(t => t.id))
+  const shown = items.filter(n =>
+    (!n.titleId || visible.has(n.titleId)) && (!n.channelId || cat.channelById[n.channelId]) &&
+    (n.kind !== 'episodes' || profile.list.includes(n.titleId!) || profile.recent.includes(n.titleId!))).slice(0, 12)
+  const unread = shown.filter(n => n.createdAt > profile.notifSeenAt).length
+  const isNew = (n: AppNotification) => n.createdAt > (readBefore ?? profile.notifSeenAt)
+  const opened = () => { if (unread) { setReadBefore(profile.notifSeenAt); markNotificationsSeen() } }
+  const go = (n: AppNotification) => {
+    const t = n.titleId ? cat.byId[n.titleId] : null
+    if (t && browse) browse.openInfo(t)
+    else if (n.channelId) router.push(`/channel/${n.channelId}`)
+    else if (t) router.push('/browse')
+  }
+  const art = (n: AppNotification) => {
+    const t = n.titleId ? cat.byId[n.titleId] : null
+    const c = n.channelId ? cat.channelById[n.channelId] : null
+    if (t?.image || t?.poster) return <span className="notif-art" style={{ backgroundImage: `url("${t.image || t.poster}")` }} />
+    if (c) return <span className="notif-art" style={{ background: c.bg, backgroundImage: c.image ? `url("${c.image}")` : undefined }} />
+    return <span className="notif-art" style={{ background: `linear-gradient(135deg, hsl(${t?.hue ?? 355} 80% 45%), #141414)` }} />
+  }
+
+  return (
+    <HoverMenu className="bell" trigger={
+      <button aria-label={`Notifications${unread ? `, ${unread} unread` : ''}`} onMouseEnter={opened} onFocus={opened}>
+        <Bell size={22} />{unread > 0 && <span className="bell-dot">{unread}</span>}
+      </button>}>
+      {shown.length ? shown.map(n => (
+        <button key={n.id} type="button" className={`notif ${isNew(n) ? 'unread' : ''}`} onClick={() => go(n)}>
+          {art(n)}
+          <div><b>{n.heading}</b>{n.body && <p>{n.body}</p>}<small>{timeAgo(n.createdAt)}</small></div>
+        </button>
+      )) : <p className="notif-empty">No notifications yet.</p>}
+    </HoverMenu>
   )
 }
 

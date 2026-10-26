@@ -25,6 +25,8 @@ interface AppValue {
   saveProgress: (titleId: string, pct: number) => void
   savePosition: (titleId: string, pos: WatchPosition) => void
   recordPlay: (titleId: string) => void
+  markNotificationsSeen: () => void
+  forgetTitle: (titleId: string) => Promise<void>
 }
 
 const Ctx = createContext<AppValue | null>(null)
@@ -101,10 +103,27 @@ export function AppProvider({ initialMe, initialProfileId, children }: { initial
     api(`/profiles/${profile.id}/plays/${encodeURIComponent(titleId)}`, { method: 'POST' }).catch(() => {})
   }
 
+  const markNotificationsSeen = () => {
+    if (!profile) return
+    patchProfile(profile.id, p => ({ ...p, notifSeenAt: new Date().toISOString() }))
+    api(`/profiles/${profile.id}/notifications`, { method: 'PUT' }).catch(() => {})
+  }
+
+  // Removes a show from the profile's history (plays, progress and saved episode).
+  const forgetTitle = async (titleId: string) => {
+    if (!profile) return
+    await api(`/profiles/${profile.id}/history/${encodeURIComponent(titleId)}`, { method: 'DELETE' })
+    patchProfile(profile.id, p => {
+      const { [titleId]: _pct, ...progress } = p.progress
+      const { [titleId]: _pos, ...position } = p.position
+      return { ...p, recent: p.recent.filter(x => x !== titleId), progress, position }
+    })
+  }
+
   return (
     <Ctx.Provider value={{
       user, profile, refresh, signUp, signIn, signOut, setActiveProfile,
-      addProfile, updateProfile, removeProfile, toggleList, saveProgress, savePosition, recordPlay,
+      addProfile, updateProfile, removeProfile, toggleList, saveProgress, savePosition, recordPlay, markNotificationsSeen, forgetTitle,
     }}>
       {children}
     </Ctx.Provider>

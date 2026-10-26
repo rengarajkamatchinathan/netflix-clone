@@ -51,6 +51,9 @@
 .adm-icon:hover { color: var(--text); background: var(--panel-2); }
 .adm button:focus-visible, .adm a:focus-visible, .adm input:focus-visible, .adm select:focus-visible, .adm textarea:focus-visible, .adm tr:focus-visible,
 .adm-modal button:focus-visible, .adm-modal input:focus-visible, .adm-modal select:focus-visible, .adm-modal textarea:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+/* native dropdown lists are drawn by the browser; keep them dark so the light option text stays readable */
+.adm select, .adm-modal select { color-scheme: dark; }
+.adm option, .adm-modal option { background: #141416; color: #fff; }
 
 /* pills */
 .adm-pill { display: inline-block; font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 999px; background: #2a2a2d; color: var(--muted); white-space: nowrap; }
@@ -243,3 +246,29 @@ body.adm-modal-open { overflow: hidden; }
 }
 .adm-section-switch { margin-bottom: 16px; }
 .adm-section-switch.busy { opacity: .6; pointer-events: none; }
+
+/* Channel schedule */
+.adm-daybar { position: relative; height: 26px; margin-bottom: 18px; background: var(--panel-2); border-radius: 4px; }
+.adm-daybar span { position: absolute; top: 0; bottom: 0; border-radius: 3px; opacity: .85; }
+.adm-daybar i { position: absolute; top: 100%; transform: translateX(-50%); font-style: normal; font-size: 11px; color: var(--muted); padding-top: 2px; }
+.adm-daybar i:first-of-type { transform: none; }
+.adm-block { display: flex; flex-direction: column; gap: 10px; padding: 12px; background: var(--panel); border: 1px solid var(--line); border-radius: 6px; }
+.adm-block-head { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+.adm-block-head label { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 14px; }
+.adm-block-head input { height: 34px; background: var(--panel-2); border: 1px solid #3a3a3e; border-radius: 4px; padding: 0 8px; color: var(--text); color-scheme: dark; }
+
+/* Bulk actions on shows */
+.adm-bulk { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 8px 10px; border-radius: 4px; margin-bottom: 6px; }
+.adm-bulk.on { background: var(--panel-2); position: sticky; top: 0; z-index: 5; }
+.adm-bulk select { height: 30px; background: var(--panel); border: 1px solid #3a3a3e; border-radius: 4px; padding: 0 8px; color: var(--text); }
+.adm-bulk-all { display: flex; align-items: center; gap: 8px; margin-right: 8px; font-size: 14px; color: var(--muted); cursor: pointer; }
+.adm-show-item { display: flex; align-items: center; gap: 10px; }
+.adm-show-item .adm-show-row { flex: 1; min-width: 0; }
+.adm-show-item.picked .adm-show-row { border-color: var(--red, #e50914); }
+.adm-pick, .adm-bulk-all input { width: 18px; height: 18px; flex: none; margin-left: 10px; accent-color: #e50914; cursor: pointer; }
+.adm-bulk-all input { margin-left: 0; }
+
+/* Notifications */
+.adm-notif-list li { align-items: flex-start; }
+.adm-notif-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.adm-notif-main small { color: var(--muted); }

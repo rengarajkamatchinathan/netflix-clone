@@ -173,12 +173,17 @@ function VideoShell({ src, startAt = 0, onTime, onEnded, title, subtitle, synops
 export function WatchPage({ id }: { id: string }) {
   const params = useSearchParams()
   const router = useRouter()
-  const { profile, saveProgress } = useApp()
+  const { profile, saveProgress, savePosition } = useApp()
   const { byId } = useCatalog()
   const t = byId[id]
   const ep = Number(params.get('ep')) || 1
   const lastSave = useRef(0)
   const [showEps, setShowEps] = useState(false)
+  // Remember the episode being watched, so Play resumes here next time.
+  const saved = t && profile?.position[t.id]
+  useEffect(() => {
+    if (t?.type === 'tv' && profile && saved?.episode !== ep) savePosition(t.id, { season: saved?.season ?? 1, episode: ep })
+  }, [t?.id, ep])
   if (!t) return <div className="player"><p className="center">Title not found</p></div>
   const eps = episodesFor(t)
   const cur = eps[ep - 1] || eps[0]
