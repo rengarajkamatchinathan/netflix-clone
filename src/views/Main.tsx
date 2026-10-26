@@ -4,7 +4,7 @@ import Link from 'next/link'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { useApp } from '@/context/AppContext'
 import { useCatalog } from '@/context/CatalogContext'
-import { channelTitles, nowPlaying, randomBumper, rowsFor, search, type Channel, type Title } from '@/lib/catalog'
+import { becauseYouWatched, channelTitles, continueWatching, nowPlaying, randomBumper, rowsFor, search, type Channel, type Title } from '@/lib/catalog'
 import type { Bumper } from '@/lib/types'
 import { YouTubeClip } from './Player'
 import { cssVars, Footer, Navbar, PosterArt } from '@/components/ui'
@@ -22,7 +22,8 @@ export function BrowsePage({ type }: { type?: string }) {
   const top = rows.find(r => r.top10)?.items || rows[0].items
   const rank = new Date().getDate() % Math.min(top.length, 5)
   const hero = top[rank]
-  const continuing = Object.entries(profile.progress).filter(([, p]) => p > 0 && p < 98).map(([id]) => cat.byId[id]).filter(Boolean)
+  const continuing = continueWatching(cat, profile)
+  const because = becauseYouWatched(cat, profile)
   const myList = profile.list.map(id => cat.byId[id]).filter(Boolean)
 
   return (
@@ -31,11 +32,12 @@ export function BrowsePage({ type }: { type?: string }) {
       {type && <div className="sub-header"><h1>{HEADINGS[type]}</h1></div>}
       <Billboard t={hero} rank={rank + 1} />
       <div className="rows">
-        {continuing.length > 0 && <Row title={`Continue Watching for ${profile.name}`} items={continuing} />}
+        {continuing.length > 0 && <Row title={`Continue Watching for ${profile.name}`} items={continuing} resume />}
         {!type && <ChannelStrip />}
         {rows.map((r, i) => (
           <div key={r.title}>
             <Row {...r} />
+            {i === 0 && because && <Row title={`Because You Watched ${because.source.name}`} items={because.items} />}
             {i === 1 && myList.length > 0 && <Row title="My List" items={myList} link="/my-list" />}
           </div>
         ))}
@@ -106,6 +108,7 @@ export function ChannelPage({ id }: { id: string }) {
   const c = cat.channelById[id]
   const router = useRouter()
   const { openInfo } = useBrowse()
+  const { profile } = useApp()
   // Like Netflix's billboard: once the bumper has been playing a moment, the logo shrinks and the
   // schedule details fade so the video takes over.
   const [compact, setCompact] = useState(false)
@@ -120,6 +123,8 @@ export function ChannelPage({ id }: { id: string }) {
   const np = nowPlaying(cat, id)
   const shows = list.filter(t => t.type !== 'movie')
   const movies = list.filter(t => t.type === 'movie')
+  const continuing = profile ? continueWatching(cat, profile, id) : []
+  const because = profile && becauseYouWatched(cat, profile, id)
 
   return (
     <div className="page channel-page" style={cssVars({ '--accent': c.accent, '--chan-bg': c.bg })}>
@@ -145,7 +150,9 @@ export function ChannelPage({ id }: { id: string }) {
         </div>
       </section>
       <div className="rows">
+        {profile && continuing.length > 0 && <Row title={`Continue Watching for ${profile.name}`} items={continuing} resume />}
         <Row title={`Top 10 on ${c.name}`} items={shows.slice(0, 10)} top10 />
+        {because && <Row title={`Because You Watched ${because.source.name}`} items={because.items} />}
         <Row title={`All on ${c.name}`} items={shows} viewAll={`/channel/${id}/all`} />
         {movies.length > 0 && <Row title="Movies" items={movies} />}
       </div>

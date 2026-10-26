@@ -6,6 +6,7 @@ import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { useApp } from '@/context/AppContext'
 import { useCatalog } from '@/context/CatalogContext'
 import { hash, type Channel, type Title } from '@/lib/catalog'
+import type { WatchPosition } from '@/lib/types'
 import { cssVars, PosterArt } from './ui'
 import { Check, ChevronDown, ChevronLeft, ChevronRight, Close, Info, Play, Plus, Replay, ThumbUp, Volume } from './icons'
 
@@ -38,14 +39,15 @@ export function BrowseProvider({ children }: { children: ReactNode }) {
   const pathname = usePathname()
   const search = useSearchParams().toString()
   const router = useRouter()
+  const { recordPlay } = useApp()
   useEffect(() => { setPreview(null); setInfo(null) }, [pathname, search])
 
   const openInfo = (t: Title, rect: Rect = null) => { setPreview(null); setInfo({ t, rect }) }
   const openLink = (t: Title) => { setPreview(null); window.open(t.link!, '_blank', 'noopener,noreferrer') }
-  // Clicking a title: open its link in a new tab if it has one, otherwise the details modal.
-  const openTitle = (t: Title, rect: Rect = null) => (t.link ? openLink(t) : openInfo(t, rect))
+  // Clicking a title always opens the preview modal; its Play button is what opens the link.
+  const openTitle = (t: Title, rect: Rect = null) => openInfo(t, rect)
   // Play: open its link in a new tab if it has one, otherwise the built-in player.
-  const playTitle = (t: Title) => (t.link ? openLink(t) : router.push(`/watch/${t.id}`))
+  const playTitle = (t: Title) => { recordPlay(t.id); if (t.link) openLink(t); else router.push(`/watch/${t.id}`) }
   return (
     <BrowseCtx.Provider value={{ openInfo, openTitle, playTitle, setPreview }}>
       {children}
@@ -90,6 +92,52 @@ function LikeButton({ big }: { big?: boolean }) {
   )
 }
 
+const posLabel = (p: WatchPosition) => `S${p.season}:E${p.episode}`
+
+const clamp = (v: number, max: number) => Math.max(1, Math.min(max, Math.round(v) || 1))
+function StepField({ label, value, max, set }: { label: string; value: number; max: number; set: (n: number) => void }) {
+  return (
+    <label className="tracker-field">
+      <span>{label}</span>
+      <span className="stepper">
+        <button type="button" aria-label={`Previous ${label.toLowerCase()}`} onClick={() => set(clamp(value - 1, max))} disabled={value <= 1}>−</button>
+        <input type="number" inputMode="numeric" min={1} max={max} value={value} onChange={e => set(clamp(Number(e.target.value), max))} />
+        <button type="button" aria-label={`Next ${label.toLowerCase()}`} onClick={() => set(clamp(value + 1, max))} disabled={value >= max}>+</button>
+      </span>
+    </label>
+  )
+}
+
+// Manual "where am I up to" for a series, saved per profile.
+function WatchTracker({ t }: { t: Title }) {
+  const { profile, savePosition } = useApp()
+  const saved = profile?.position[t.id]
+  const [season, setSeason] = useState(saved?.season ?? 1)
+  const [episode, setEpisode] = useState(saved?.episode ?? 1)
+  const maxSeason = t.seasons > 0 ? t.seasons : 99
+  const dirty = !saved || saved.season !== season || saved.episode !== episode
+  if (!profile) return null
+
+  return (
+    <div className="tracker">
+      <div className="tracker-head">
+        <h4>Your Progress</h4>
+        {saved && <span className="muted">Last watched <b>{posLabel(saved)}</b></span>}
+      </div>
+      <div className="tracker-row">
+        <StepField label="Season" value={season} max={maxSeason} set={setSeason} />
+        <StepField label="Episode" value={episode} max={999} set={setEpisode} />
+        <button type="button" className="btn grey tracker-save" disabled={!dirty} onClick={() => savePosition(t.id, { season, episode })}>
+          {dirty ? 'Save' : <><Check size={16} /> Saved</>}
+        </button>
+        <button type="button" className="tracker-next" onClick={() => { const e = episode + 1; setEpisode(e); savePosition(t.id, { season, episode: e }) }}>
+          Watched E{episode} → next
+        </button>
+      </div>
+    </div>
+  )
+}
+
 const Progress = ({ pct }: { pct?: number }) => (pct && pct > 0 ? <div className="progress"><div style={{ width: `${pct}%` }} /></div> : null)
 
 /* ---------- Hover preview (pops out of the card, like the real thing) ---------- */
@@ -115,7 +163,7 @@ function Preview({ t, rect, origin, onClose }: { t: Title; rect: CardRect; origi
   return (
     <div ref={ref} className={`preview ${shown ? 'shown' : ''}`} onMouseLeave={leave} onMouseEnter={enter}
       style={cssVars({ left, top, width: w, '--from': `translate(${rect.left - left}px, ${rect.top - top + (artH * s - rect.height) / -2}px) scale(${s})` })}>
-      <div className="preview-art" onClick={() => playTitle(t)}>
+      <div className="preview-art" onClick={() => openInfo(t, ref.current!.getBoundingClientRect())}>
         <PosterArt t={t}><Progress pct={profile?.progress[t.id]} /></PosterArt>
       </div>
       <div className="preview-info">
@@ -126,6 +174,7 @@ function Preview({ t, rect, origin, onClose }: { t: Title; rect: CardRect; origi
           <TipButton tip="Episodes & info" className="circle push" onClick={() => openInfo(t, ref.current!.getBoundingClientRect())}><ChevronDown size={18} /></TipButton>
         </div>
         <Meta t={t} />
+        {profile?.position[t.id] && <div className="watch-pos-line">{posLabel(profile.position[t.id])}</div>}
         <ul className="moods">{moodsFor(t).map(m => <li key={m}>{m}</li>)}</ul>
       </div>
     </div>
@@ -134,7 +183,7 @@ function Preview({ t, rect, origin, onClose }: { t: Title; rect: CardRect; origi
 
 /* ---------- Cards and rows ---------- */
 
-export function TitleCard({ t, tall, origin = 'center' }: { t: Title; tall?: boolean; origin?: Origin }) {
+export function TitleCard({ t, tall, origin = 'center', resume }: { t: Title; tall?: boolean; origin?: Origin; resume?: boolean }) {
   const { setPreview, openTitle } = useBrowse()
   const { profile } = useApp()
   const ref = useRef<HTMLDivElement>(null)
@@ -150,7 +199,10 @@ export function TitleCard({ t, tall, origin = 'center' }: { t: Title; tall?: boo
   return (
     <div ref={ref} className={`card ${tall ? 'tall' : ''}`} onMouseEnter={enter} onMouseLeave={() => clearTimeout(timer.current)}
       onClick={() => { clearTimeout(timer.current); openTitle(t, ref.current!.getBoundingClientRect()) }}>
-      <PosterArt t={t} wide={!tall}><Progress pct={profile?.progress[t.id]} /></PosterArt>
+      <PosterArt t={t} wide={!tall}>
+        <Progress pct={profile?.progress[t.id]} />
+        {resume && profile?.position[t.id] && <span className="card-resume">{posLabel(profile.position[t.id])}</span>}
+      </PosterArt>
     </div>
   )
 }
@@ -170,7 +222,7 @@ function RankNumber({ n }: { n: number }) {
   )
 }
 
-export function Row({ title, items, top10, link, viewAll }: { title: string; items: Title[]; top10?: boolean; link?: string; viewAll?: string }) {
+export function Row({ title, items, top10, link, viewAll, resume }: { title: string; items: Title[]; top10?: boolean; link?: string; viewAll?: string; resume?: boolean }) {
   // Top 10 uses tall posters only when every show has a tall "poster" image (or no image at all);
   // otherwise it shows rank + wide 16:9 cards so wide images aren't cropped. Wide items need more room.
   const tallTop10 = !!top10 && items.every(t => t.poster || !t.image)
@@ -201,7 +253,7 @@ export function Row({ title, items, top10, link, viewAll }: { title: string; ite
               <div key={t.id} className="slider-item" style={{ flexBasis: `${100 / per}%` }}>
                 {top10
                   ? <div className={`top10-item ${tallTop10 ? '' : 'wide'}`}><RankNumber n={i + 1} /><TitleCard t={t} tall={tallTop10} origin={origin} /></div>
-                  : <TitleCard t={t} origin={origin} />}
+                  : <TitleCard t={t} origin={origin} resume={resume} />}
               </div>
             )
           })}
@@ -249,6 +301,8 @@ export function Billboard({ t, rank }: { t: Title; rank?: number }) {
 export function DetailModal({ t, rect, onClose }: { t: Title; rect: Rect; onClose: () => void }) {
   const { openTitle, playTitle } = useBrowse()
   const { titles, channelById } = useCatalog()
+  const { profile } = useApp()
+  const pos = profile?.position[t.id]
   const ref = useRef<HTMLDivElement>(null)
   const bg = useRef<HTMLDivElement>(null)
   const from = useRef<Keyframe[]>([])
@@ -287,7 +341,7 @@ export function DetailModal({ t, rect, onClose }: { t: Title; rect: Rect; onClos
           <div className="modal-hero-info">
             <h1 className="title-treatment">{t.name}</h1>
             <div className="btns">
-              <button className="btn white" onClick={() => playTitle(t)}><Play size={24} /> Play</button>
+              <button className="btn white" onClick={() => playTitle(t)}><Play size={24} /> {pos ? `Resume ${posLabel(pos)}` : 'Play'}</button>
               <ListButton t={t} big />
               <LikeButton big />
             </div>
@@ -300,6 +354,7 @@ export function DetailModal({ t, rect, onClose }: { t: Title; rect: Rect; onClos
               <Meta t={t} year />
               {t.isNew && <div className="top10-line"><span className="top10-badge"><small>TOP</small>10</span>#{(hash(t.id) % 9) + 1} in {t.type === 'tv' ? 'TV Shows' : 'Films'} Today</div>}
               <p className="modal-synopsis">{t.synopsis}</p>
+              {t.type === 'tv' && <WatchTracker t={t} />}
             </div>
             <div className="modal-tags">
               {chan && <p><span>Channel{t.channels.length > 1 ? 's' : ''}: </span>{t.channels.map((id, i) => <span key={id} className="chan-link">{i > 0 && ', '}<Link href={`/channel/${id}`}>{channelById[id]?.name || id}</Link></span>)}</p>}
@@ -360,6 +415,10 @@ export function ChannelTile({ c, big }: { c: Channel; big?: boolean }) {
         : <span className="channel-name" style={{ color: c.accent, textShadow: `3px 3px 0 ${c.accent2}` }}>{c.name}</span>}
       <span className="channel-tag">{c.tagline}</span>
       <span className="live-pill"><i />LIVE</span>
+      <span className="channel-hover">
+        <span className="channel-hover-play"><Play size={16} /></span>
+        <span className="channel-hover-text"><b>{c.name}</b><small>Watch Live</small></span>
+      </span>
     </Link>
   )
 }

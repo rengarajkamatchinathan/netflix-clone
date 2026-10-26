@@ -53,7 +53,11 @@ export interface Profile {
   isKids: boolean
   list: string[]
   progress: Record<string, number>
+  position: Record<string, WatchPosition>
+  recent: string[] // title ids, most recently played first
 }
+
+export interface WatchPosition { season: number; episode: number }
 
 export interface AccountUser {
   id: number

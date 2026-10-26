@@ -96,3 +96,26 @@ create table if not exists watch_progress (
   primary key (profile_id, title_id)
 );
 create index if not exists watch_progress_updated_idx on watch_progress(updated_at);
+
+-- Season and episode the viewer says they're up to (entered by hand in the title preview).
+create table if not exists watch_position (
+  profile_id int not null references profiles(id) on delete cascade,
+  title_id text not null references titles(id) on delete cascade,
+  season int not null,
+  episode int not null,
+  updated_at timestamptz not null default now(),
+  primary key (profile_id, title_id)
+);
+
+-- One row per Play press (playback happens off-site, so the press is what we count).
+-- Feeds "Recently Watched" and the admin stats.
+create table if not exists play_events (
+  id bigserial primary key,
+  profile_id int not null references profiles(id) on delete cascade,
+  title_id text not null references titles(id) on delete cascade,
+  season int,
+  episode int,
+  played_at timestamptz not null default now()
+);
+create index if not exists play_events_profile_idx on play_events(profile_id, played_at desc);
+create index if not exists play_events_title_idx on play_events(title_id, played_at);

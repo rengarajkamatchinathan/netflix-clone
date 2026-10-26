@@ -49,6 +49,7 @@ export function Dashboard() {
     ['Shows', counts.titles, null, '/admin/shows'],
     ['Channels', counts.channels, null, '/admin/channels'],
     ['Avatars', counts.avatars, null, '/admin/avatars'],
+    ['Plays', counts.plays7d, 'in the last 7 days', null],
   ]
   return (
     <div className="adm-page">
@@ -73,7 +74,7 @@ export function Dashboard() {
           <h2>Most watched this week</h2>
           {popular.length ? (
             <ol className="adm-rank">
-              {popular.map(t => <li key={t.id}><Link href={`/admin/shows?edit=${encodeURIComponent(t.id)}`}>{t.name}</Link><span>{t.viewers} viewer{t.viewers === 1 ? '' : 's'}</span></li>)}
+              {popular.map(t => <li key={t.id}><Link href={`/admin/shows?edit=${encodeURIComponent(t.id)}`}>{t.name}</Link><span>{t.viewers} viewer{t.viewers === 1 ? '' : 's'} · {t.plays} play{t.plays === 1 ? '' : 's'}</span></li>)}
             </ol>
           ) : <p className="adm-muted">Nobody has watched anything in the last 7 days.</p>}
         </section>

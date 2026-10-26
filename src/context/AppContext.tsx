@@ -1,7 +1,7 @@
 'use client'
 import { createContext, useCallback, useContext, useState, type ReactNode } from 'react'
 import { api } from '@/lib/api'
-import type { AccountUser, Me, Profile, SecurityAnswer } from '@/lib/types'
+import type { AccountUser, Me, Profile, SecurityAnswer, WatchPosition } from '@/lib/types'
 
 // Signed-in account and its profiles, kept on the server. The chosen profile is a cookie so the
 // server can check it before rendering the viewer pages.
@@ -23,6 +23,8 @@ interface AppValue {
   removeProfile: (id: number) => Promise<void>
   toggleList: (titleId: string) => void
   saveProgress: (titleId: string, pct: number) => void
+  savePosition: (titleId: string, pos: WatchPosition) => void
+  recordPlay: (titleId: string) => void
 }
 
 const Ctx = createContext<AppValue | null>(null)
@@ -86,11 +88,23 @@ export function AppProvider({ initialMe, initialProfileId, children }: { initial
     patchProfile(profile.id, p => ({ ...p, progress: { ...p.progress, [titleId]: pct } }))
     api(`/profiles/${profile.id}/progress/${encodeURIComponent(titleId)}`, { method: 'PUT', body: { pct } }).catch(() => {})
   }
+  const savePosition = (titleId: string, pos: WatchPosition) => {
+    if (!profile) return
+    patchProfile(profile.id, p => ({ ...p, position: { ...p.position, [titleId]: pos } }))
+    api(`/profiles/${profile.id}/position/${encodeURIComponent(titleId)}`, { method: 'PUT', body: pos }).catch(() => {})
+  }
+
+  // Playback is off-site, so pressing Play counts as watching. Season/episode come from the saved position.
+  const recordPlay = (titleId: string) => {
+    if (!profile) return
+    patchProfile(profile.id, p => ({ ...p, recent: [titleId, ...p.recent.filter(x => x !== titleId)].slice(0, 20) }))
+    api(`/profiles/${profile.id}/plays/${encodeURIComponent(titleId)}`, { method: 'POST' }).catch(() => {})
+  }
 
   return (
     <Ctx.Provider value={{
       user, profile, refresh, signUp, signIn, signOut, setActiveProfile,
-      addProfile, updateProfile, removeProfile, toggleList, saveProgress,
+      addProfile, updateProfile, removeProfile, toggleList, saveProgress, savePosition, recordPlay,
     }}>
       {children}
     </Ctx.Provider>

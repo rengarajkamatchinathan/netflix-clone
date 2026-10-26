@@ -195,3 +195,27 @@ export function randomBumper(c: Channel, previous: Bumper | null = null): Bumper
   const pool = c.bumpers.length > 1 ? c.bumpers.filter(b => b !== previous) : c.bumpers
   return pool[Math.floor(Math.random() * pool.length)]
 }
+
+/* ---------- Personal rows (from the profile's plays) ---------- */
+
+type Viewing = { recent: string[]; progress: Record<string, number> }
+const onChannel = (t: Title, channelId?: string) => !channelId || t.channels.includes(channelId)
+
+// "Continue Watching": shows played most recently first, then any part-watched in the built-in player.
+export function continueWatching(cat: Catalog, v: Viewing, channelId?: string): Title[] {
+  const partWatched = Object.entries(v.progress).filter(([, p]) => p > 0 && p < 98).map(([id]) => id)
+  return [...new Set([...v.recent, ...partWatched])].map(id => cat.byId[id]).filter(t => t && onChannel(t, channelId))
+}
+
+// "Because You Watched X": the last show played (on this channel, if given) and others like it
+// that haven't been played yet: same genre first, then the same channel.
+export function becauseYouWatched(cat: Catalog, v: Viewing, channelId?: string): { source: Title; items: Title[] } | null {
+  const source = v.recent.map(id => cat.byId[id]).find(t => t && onChannel(t, channelId))
+  if (!source) return null
+  const seen = new Set(v.recent)
+  const pool = cat.titles.filter(t => !seen.has(t.id) && onChannel(t, channelId))
+  const sameGenre = pool.filter(t => t.genre === source.genre)
+  const sameChannel = pool.filter(t => t.genre !== source.genre && t.channels.some(c => source.channels.includes(c)))
+  const items = [...sameGenre, ...sameChannel].slice(0, 18)
+  return items.length ? { source, items } : null
+}

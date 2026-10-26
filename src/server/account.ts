@@ -8,6 +8,7 @@ import { fail } from './http'
 import type { SessionUser } from './auth'
 
 export const MAX_PROFILES = 5
+export const RECENT_LIMIT = 20
 export const PROFILE_COLORS = ['#e50914', '#2f80ed', '#f2c94c', '#27ae60', '#9b51e0', '#f2994a']
 const HEX = /^#[0-9a-f]{6}$/i
 
@@ -17,9 +18,14 @@ export async function meFor(user: Pick<SessionUser, 'id' | 'email' | 'role' | 'c
     `select p.id, p.name, p.avatar_id, p.color, p.is_kids, a.url as avatar_url
      from profiles p left join avatars a on a.id = p.avatar_id where p.user_id = $1 order by p.id`, [user.id])
   const ids = profiles.map(p => p.id)
-  const [list, progress, questions] = await Promise.all([
+  const [list, progress, positions, recent, questions] = await Promise.all([
     many('select profile_id, title_id from my_list where profile_id = any($1) order by added_at desc', [ids]),
     many('select profile_id, title_id, pct from watch_progress where profile_id = any($1)', [ids]),
+    many('select profile_id, title_id, season, episode from watch_position where profile_id = any($1)', [ids]),
+    many(`select profile_id, title_id from (
+            select profile_id, title_id, max(played_at) as last, row_number() over (partition by profile_id order by max(played_at) desc) as n
+            from play_events where profile_id = any($1) group by profile_id, title_id) r
+          where n <= $2 order by last desc`, [ids, RECENT_LIMIT]),
     many('select question_key from security_answers where user_id = $1 order by slot', [user.id]),
   ])
   return {
@@ -28,6 +34,8 @@ export async function meFor(user: Pick<SessionUser, 'id' | 'email' | 'role' | 'c
       id: p.id, name: p.name, avatarId: p.avatar_id, avatarUrl: p.avatar_url, color: p.color, isKids: p.is_kids,
       list: list.filter(l => l.profile_id === p.id).map(l => l.title_id),
       progress: Object.fromEntries(progress.filter(x => x.profile_id === p.id).map(x => [x.title_id, x.pct])),
+      recent: recent.filter(x => x.profile_id === p.id).map(x => x.title_id),
+      position: Object.fromEntries(positions.filter(x => x.profile_id === p.id).map(x => [x.title_id, { season: x.season, episode: x.episode }])),
     })),
   }
 }

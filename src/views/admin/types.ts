@@ -40,7 +40,7 @@ export interface AdminUserDetail extends Omit<AdminUserRow, 'profiles'> {
 export interface AdminAvatar { id: string; url: string; label: string; category: string; sort_order: number; used: number }
 
 export interface Stats {
-  counts: { users: number; newUsers: number; profiles: number; titles: number; channels: number; avatars: number }
+  counts: { users: number; newUsers: number; profiles: number; titles: number; channels: number; avatars: number; plays7d: number }
   recent: { id: number; email: string; created_at: string; profiles: number }[]
-  popular: { id: string; name: string; viewers: number }[]
+  popular: { id: string; name: string; viewers: number; plays: number }[]
 }

@@ -235,10 +235,24 @@ ul { list-style: none; }
 .empty li { margin: .4em 0; }
 
 /* ============ Channels ============ */
-.channel-strip { display: flex; gap: .4vw; overflow-x: auto; padding: 0 var(--gutter); scrollbar-width: none; }
+/* Vertical padding gives the zoomed tile room (overflow-x:auto also clips the y axis); negative margin keeps the row spacing */
+.channel-strip { display: flex; gap: .4vw; overflow-x: auto; padding: 2.2vw var(--gutter); margin: -2.2vw 0; scrollbar-width: none; }
 .channel-strip::-webkit-scrollbar { display: none; }
-.channel-tile { position: relative; flex: 0 0 clamp(170px, 16vw, 280px); aspect-ratio: 16 / 9; border-radius: 4px; display: flex; flex-direction: column; justify-content: center; align-items: center; overflow: hidden; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .08); transition: transform .3s var(--ease-out), box-shadow .3s; }
-.channel-tile:hover { transform: scale(1.05); box-shadow: inset 0 0 0 2px var(--accent), 0 8px 24px rgba(0, 0, 0, .6); z-index: 2; }
+.channel-tile { position: relative; flex: 0 0 clamp(170px, 16vw, 280px); aspect-ratio: 16 / 9; border-radius: 4px; display: flex; flex-direction: column; justify-content: center; align-items: center; overflow: hidden; transition: transform .35s var(--ease-out), box-shadow .35s, border-radius .35s; }
+.channel-tile:first-child { transform-origin: left center; }
+.channel-tile:last-child { transform-origin: right center; }
+.channel-tile:hover { transform: scale(1.15); transition-delay: .15s; border-radius: 6px; box-shadow: 0 14px 36px rgba(0, 0, 0, .75); z-index: 2; }
+.channel-tile .channel-logo, .channel-tile .channel-name, .channel-tile .channel-tag { transition: transform .35s var(--ease-out), opacity .25s; }
+.channel-tile:hover .channel-logo, .channel-tile:hover .channel-name { transform: translateY(-14%); transition-delay: .15s; }
+.channel-tile:hover .channel-tag { opacity: 0; transition-delay: .15s; }
+.channel-hover { position: absolute; inset: auto 0 0; display: flex; align-items: center; gap: 8px; padding: 18px 10px 8px; background: linear-gradient(transparent, rgba(0, 0, 0, .9)); opacity: 0; transform: translateY(40%); transition: opacity .25s, transform .35s var(--ease-out); pointer-events: none; }
+.channel-tile:hover .channel-hover { opacity: 1; transform: none; transition-delay: .2s; }
+.channel-hover-play { flex: none; display: grid; place-items: center; width: 26px; height: 26px; border-radius: 50%; background: #fff; color: #000; }
+.channel-hover-text { display: flex; flex-direction: column; min-width: 0; line-height: 1.15; text-align: left; }
+.channel-hover-text b { font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.channel-hover-text small { font-size: 10px; color: #46d369; font-weight: 700; }
+.channel-tile.big:hover { transform: none; }
+.channel-tile.big .channel-hover { display: none; }
 .channel-tile.big { flex: none; width: 100%; }
 .channel-name { font-family: var(--display); font-size: clamp(32px, 3.2vw, 52px); font-style: italic; letter-spacing: .04em; transform: rotate(-4deg); line-height: 1; }
 .channel-name.huge { font-size: clamp(72px, 11vw, 170px); }
@@ -686,3 +700,26 @@ img.avatar { object-fit: cover; background: #222; }
 .account-profiles span { display: flex; align-items: center; gap: 8px; }
 .question-list { list-style: disc; padding-left: 20px; display: flex; flex-direction: column; gap: 4px; }
 .row-btns { display: flex; gap: 8px; flex-wrap: wrap; }
+
+/* ============ Watch tracker (manual season / episode in the title modal) ============ */
+.tracker { margin-top: 22px; padding: 16px 18px; border-radius: 6px; background: rgba(255, 255, 255, .05); border: 1px solid rgba(255, 255, 255, .1); }
+.tracker-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
+.tracker-head h4 { margin: 0; font-size: 16px; }
+.tracker-head .muted { font-size: 13px; }
+.tracker-head b { color: #fff; }
+.tracker-row { display: flex; align-items: flex-end; gap: 14px; flex-wrap: wrap; }
+.tracker-field { display: flex; flex-direction: column; gap: 6px; font-size: 12px; color: #bcbcbc; text-transform: uppercase; letter-spacing: .08em; }
+.stepper { display: inline-flex; align-items: stretch; border: 1px solid rgba(255, 255, 255, .25); border-radius: 4px; overflow: hidden; }
+.stepper button { width: 34px; background: rgba(255, 255, 255, .08); color: #fff; font-size: 18px; border: 0; cursor: pointer; }
+.stepper button:hover:not(:disabled) { background: rgba(255, 255, 255, .2); }
+.stepper button:disabled { opacity: .35; cursor: default; }
+.stepper input { width: 56px; padding: 8px 0; text-align: center; background: #141414; color: #fff; border: 0; font-size: 16px; font-weight: 700; -moz-appearance: textfield; appearance: textfield; }
+.stepper input::-webkit-outer-spin-button, .stepper input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.tracker-save { padding: 8px 18px; font-size: 14px; display: inline-flex; align-items: center; gap: 6px; }
+.tracker-save:disabled { opacity: .6; cursor: default; }
+.tracker-next { background: none; border: 0; color: #bcbcbc; font-size: 13px; text-decoration: underline; cursor: pointer; padding: 8px 0; }
+.tracker-next:hover { color: #fff; }
+.watch-pos-line { margin-top: 6px; font-size: 12px; font-weight: 700; color: #46d369; }
+
+/* "S2:E5" on Continue Watching cards */
+.card-resume { position: absolute; left: 8px; bottom: 16px; z-index: 2; padding: 2px 6px; border-radius: 3px; background: rgba(0, 0, 0, .75); color: #fff; font-size: 11px; font-weight: 700; letter-spacing: .03em; }
