@@ -70,7 +70,10 @@ const LINKS: [string, string][] = [['/browse', 'Home'], ['/browse/tv', 'TV Shows
 
 function NavLinks() {
   const path = usePathname()
-  return LINKS.map(([to, l]) => <Link key={to} href={to} className={path === to ? 'active' : ''}>{l}</Link>)
+  const { titles } = useCatalog()
+  // TV Shows / Movies drop out when there's nothing of that type to show.
+  const has = (type: string) => titles.some(t => t.type === type)
+  return LINKS.filter(([to]) => !to.startsWith('/browse/') || to === '/browse/new' || has(to.slice(8))).map(([to, l]) => <Link key={to} href={to} className={path === to ? 'active' : ''}>{l}</Link>)
 }
 
 export function Navbar() {

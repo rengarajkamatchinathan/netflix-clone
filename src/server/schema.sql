@@ -72,6 +72,14 @@ create table if not exists titles (
   needs_review boolean not null default false,
   created_at timestamptz not null default now()
 );
+-- Hidden titles stay saved but viewers don't see them.
+alter table titles add column if not exists hidden boolean not null default false;
+
+-- Site-wide switches set in the admin panel, e.g. 'sections' = { "series": true, "movies": false }.
+create table if not exists settings (
+  key text primary key,
+  value jsonb not null
+);
 
 create table if not exists channel_titles (
   channel_id text not null references channels(id) on delete cascade,

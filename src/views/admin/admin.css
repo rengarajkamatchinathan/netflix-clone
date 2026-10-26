@@ -241,3 +241,5 @@ body.adm-modal-open { overflow: hidden; }
   .adm-preview { order: -1; }
   .adm-avatar-edit { flex-direction: column; align-items: center; }
 }
+.adm-section-switch { margin-bottom: 16px; }
+.adm-section-switch.busy { opacity: .6; pointer-events: none; }

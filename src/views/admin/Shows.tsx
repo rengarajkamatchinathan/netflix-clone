@@ -5,22 +5,22 @@ import { api } from '@/lib/api'
 import type { TitleType } from '@/lib/types'
 import { useReloadCatalog } from '@/context/CatalogContext'
 import { Plus, Search, Trash } from '@/components/icons'
-import { ConfirmDelete, errorMessage, Loading, Modal, SelectField, SortableList, TextField, Thumb, useApi, useToast } from './kit'
+import { Check, ConfirmDelete, errorMessage, Loading, Modal, SelectField, SortableList, TextField, Thumb, useApi, useToast } from './kit'
 import type { AdminChannel, AdminTitleRow, TitleDetail } from './types'
 
 interface EpisodeRow { key: number; title: string; url: string }
 interface ShowForm {
   name: string; year: string; type: TitleType; genre: string; synopsis: string; category: string; maturity: string
-  image: string; poster: string; link: string; videos: EpisodeRow[]; channels: string[]
+  image: string; poster: string; link: string; videos: EpisodeRow[]; channels: string[]; hidden: boolean
 }
 
-const EMPTY: ShowForm = { name: '', year: '', type: 'tv', genre: '', synopsis: '', category: '', maturity: '', image: '', poster: '', link: '', videos: [], channels: [] }
+const EMPTY: ShowForm = { name: '', year: '', type: 'tv', genre: '', synopsis: '', category: '', maturity: '', image: '', poster: '', link: '', videos: [], channels: [], hidden: false }
 let rowSeq = 0
 const withKeys = (videos: { title: string | null; url: string }[]): EpisodeRow[] => videos.map(v => ({ title: v.title || '', url: v.url, key: ++rowSeq }))
 
 const toForm = (t: TitleDetail): ShowForm => ({
   name: t.name, year: t.year == null ? '' : String(t.year), type: t.type, genre: t.genre || '', synopsis: t.synopsis || '', category: t.category || '',
-  maturity: t.maturity || '', image: t.image || '', poster: t.poster || '', link: t.link || '', videos: withKeys(t.videos || []), channels: t.channels,
+  maturity: t.maturity || '', image: t.image || '', poster: t.poster || '', link: t.link || '', videos: withKeys(t.videos || []), channels: t.channels, hidden: t.hidden,
 })
 
 type ImageStatusValue = 'none' | 'checking' | 'ok' | 'broken'
@@ -138,6 +138,7 @@ export function ShowModal({ id, initial, channels, onClose, onSaved, onDeleted }
                 <TextField label="Category" value={form.category} onChange={v => set({ category: v })} placeholder="Series" hint="'Series' puts it in the Sitcoms row." maxLength={40} />
                 <TextField label="Age rating" value={form.maturity} onChange={v => set({ maturity: v })} placeholder="U/A 7+" maxLength={20} />
               </div>
+              <Check label="Shown to viewers" hint="Hidden shows stay saved but don't appear anywhere on the site." checked={!form.hidden} onChange={v => set({ hidden: !v })} />
               <div className="adm-field">
                 <label>On channels</label>
                 <div className="adm-chips">
@@ -199,7 +200,42 @@ export function ShowModal({ id, initial, channels, onClose, onSaved, onDeleted }
   )
 }
 
-export function ShowsPage() {
+// Series and Movies pages list the titles that aren't on any channel; Shows lists everything.
+const KINDS = {
+  all: { heading: 'Shows', noun: 'show', type: undefined, section: undefined },
+  tv: { heading: 'Series', noun: 'series', type: 'tv', section: 'series' },
+  movie: { heading: 'Movies', noun: 'movie', type: 'movie', section: 'movies' },
+} as const
+
+type Sections = { series: boolean; movies: boolean }
+
+// Site-wide switch for the whole Series or Movies section; saves as soon as it's changed.
+function SectionSwitch({ section, heading }: { section: keyof Sections; heading: string }) {
+  const toast = useToast()
+  const reloadCatalog = useReloadCatalog()
+  const sections = useApi<Sections>('/admin/sections')
+  const [busy, setBusy] = useState(false)
+  if (!sections.data) return <Loading error={sections.error} onRetry={sections.reload} />
+  const on = sections.data[section]
+  const change = async (v: boolean) => {
+    setBusy(true)
+    try {
+      sections.setData(await api<Sections>('/admin/sections', { method: 'PUT', body: { [section]: v } }))
+      await reloadCatalog()
+      toast(`${heading} ${v ? 'shown to' : 'hidden from'} viewers`)
+    } catch (e) { toast(errorMessage(e), 'bad') }
+    setBusy(false)
+  }
+  return (
+    <section className={`adm-panel adm-section-switch ${busy ? 'busy' : ''}`}>
+      <Check label={`Show ${heading.toLowerCase()} to viewers`} checked={on} onChange={change}
+        hint={on ? `Every ${heading.toLowerCase().replace(/s$/, '')} below that isn't hidden on its own appears on the site.` : `None of the ${heading.toLowerCase()} below appear on the site, whatever their own setting. Channel shows aren't affected.`} />
+    </section>
+  )
+}
+
+export function ShowsPage({ kind = 'all' }: { kind?: keyof typeof KINDS }) {
+  const { heading, noun, type, section } = KINDS[kind]
   const shows = useApi<AdminTitleRow[]>('/admin/titles')
   const chans = useApi<AdminChannel[]>('/admin/channels')
   const params = useSearchParams()
@@ -220,9 +256,10 @@ export function ShowsPage() {
   const list = useMemo(() => {
     const s = q.trim().toLowerCase()
     return (shows.data || []).filter(t =>
+      (!type || (t.type === type && !t.channels.length)) &&
       (!s || t.name.toLowerCase().includes(s) || String(t.year || '').includes(s)) &&
       (channel === 'all' || (channel === 'none' ? !t.channels.length : channel === 'problems' ? problems(t).length : t.channels.includes(channel))))
-  }, [shows.data, q, channel, broken])
+  }, [shows.data, q, channel, broken, type])
 
   if (!shows.data || !chans.data) return <Loading error={shows.error || chans.error} onRetry={() => { shows.reload(); chans.reload() }} />
   const chName = (id: string) => chans.data!.find(c => c.id === id)?.name || id
@@ -232,19 +269,20 @@ export function ShowsPage() {
   return (
     <div className="adm-page">
       <div className="adm-head">
-        <h1>Shows</h1>
-        <button className="adm-btn primary" onClick={() => open('new')}><Plus size={16} /> New show</button>
+        <h1>{heading}</h1>
+        <button className="adm-btn primary" onClick={() => open('new')}><Plus size={16} /> New {noun}</button>
       </div>
+      {section && <SectionSwitch section={section} heading={heading} />}
       <div className="adm-toolbar">
-        <label className="adm-search"><Search size={16} /><input placeholder="Search shows" value={q} onChange={e => setQ(e.target.value)} aria-label="Search shows" /></label>
-        <select value={channel} onChange={e => setChannel(e.target.value)} aria-label="Filter by channel">
+        <label className="adm-search"><Search size={16} /><input placeholder={`Search ${heading.toLowerCase()}`} value={q} onChange={e => setQ(e.target.value)} aria-label={`Search ${heading.toLowerCase()}`} /></label>
+        {!type && <select value={channel} onChange={e => setChannel(e.target.value)} aria-label="Filter by channel">
           <option value="all">All channels</option>
           {chans.data.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
           <option value="none">Not on any channel</option>
           <option value="problems">Needs attention</option>
-        </select>
+        </select>}
       </div>
-      <p className="adm-muted">{list.length} of {shows.data.length} shows</p>
+      <p className="adm-muted">{type ? `${list.length} not on any channel. Adding one to a channel moves it to that channel's Shows tab.` : `${list.length} of ${shows.data.length} shows`}</p>
       <ul className="adm-show-list">
         {list.map(t => {
           const p = problems(t)
@@ -256,16 +294,17 @@ export function ShowsPage() {
                   <b>{t.name}</b>
                   <small>{[t.year, t.channels.map(chName).join(', ') || null, `${t.episodes} episode${t.episodes === 1 ? '' : 's'}`].filter(Boolean).join(' · ')}</small>
                 </span>
-                {p.map(x => <span key={x} className="adm-pill warn">{x}</span>)}
+                {t.hidden && <span className="adm-pill">Hidden</span>}
+                {p.filter(x => !type || x !== 'Not on any channel').map(x => <span key={x} className="adm-pill warn">{x}</span>)}
                 <span className="adm-btn small">Edit</span>
               </button>
             </li>
           )
         })}
       </ul>
-      {list.length === 0 && <p className="adm-empty">No shows match. <button className="adm-link" onClick={() => { setQ(''); setChannel('all') }}>Clear filters</button></p>}
+      {list.length === 0 && <p className="adm-empty">No {heading.toLowerCase()} match. <button className="adm-link" onClick={() => { setQ(''); setChannel('all') }}>Clear filters</button></p>}
       {(editing || creating) && (
-        <ShowModal key={editing || 'new'} id={editing} channels={chans.data} onClose={close}
+        <ShowModal key={editing || 'new'} id={editing} initial={type && { type }} channels={chans.data} onClose={close}
           onSaved={() => shows.reload()} onDeleted={() => shows.reload()} />
       )}
     </div>

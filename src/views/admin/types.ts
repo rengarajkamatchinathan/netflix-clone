@@ -19,12 +19,12 @@ export interface ChannelDetail extends Omit<AdminChannel, 'shows'> { titles: Lin
 
 export interface AdminTitleRow {
   id: string; name: string; year: number | null; type: TitleType; image: string | null; poster: string | null
-  category: string | null; episodes: number; channels: string[]
+  category: string | null; hidden: boolean; episodes: number; channels: string[]
 }
 
 export interface TitleDetail {
   id: string; name: string; year: number | null; type: TitleType; genre: string | null; synopsis: string | null; category: string | null
-  maturity: string | null; image: string | null; poster: string | null; link: string | null; videos: Video[]; channels: string[]
+  maturity: string | null; image: string | null; poster: string | null; link: string | null; videos: Video[]; hidden: boolean; channels: string[]
   impact: { lists: number; progress: number }
 }
 

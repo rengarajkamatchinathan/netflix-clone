@@ -75,7 +75,7 @@ export const channelOut = (c: ChannelRow) => ({
 
 export interface TitleRow {
   id: string; name: string; year: number | null; type: string; genre: string | null; synopsis: string | null; category: string | null
-  maturity: string | null; image: string | null; poster: string | null; link: string | null; videos: Video[]
+  maturity: string | null; image: string | null; poster: string | null; link: string | null; videos: Video[]; hidden: boolean
 }
 
 export function titleFields(b: Record<string, any>, current: Partial<TitleRow> = {}) {
@@ -95,6 +95,7 @@ export function titleFields(b: Record<string, any>, current: Partial<TitleRow> =
     genre: or(pick('genre', 40, 'Genre')), synopsis: or(pick('synopsis', 1000, 'Synopsis')), category: or(pick('category', 40, 'Category')),
     maturity: or(pick('maturity', 20, 'Rating')), image: or(pick('image', 2000, 'Image link')), poster: or(pick('poster', 2000, 'Poster link')),
     link: or(pick('link', 2000, 'Link')),
+    hidden: b.hidden === undefined ? !!current.hidden : !!b.hidden,
   }
 }
 
@@ -110,7 +111,7 @@ export async function titleOut(t: TitleRow) {
   ])
   return {
     id: t.id, name: t.name, year: t.year, type: t.type, genre: t.genre, synopsis: t.synopsis, category: t.category, maturity: t.maturity,
-    image: t.image, poster: t.poster, link: t.link, videos: t.videos, channels: channels.map(c => c.channel_id), impact,
+    image: t.image, poster: t.poster, link: t.link, videos: t.videos, hidden: t.hidden, channels: channels.map(c => c.channel_id), impact,
   }
 }
 

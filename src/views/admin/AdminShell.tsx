@@ -7,7 +7,7 @@ import { Logo } from '@/components/ui'
 import { fmtAgo, Loading, ToastProvider, useApi } from './kit'
 import type { Stats } from './types'
 
-const NAV: [string, string][] = [['/admin', 'Dashboard'], ['/admin/users', 'Users'], ['/admin/channels', 'Channels'], ['/admin/shows', 'Shows'], ['/admin/avatars', 'Avatars']]
+const NAV: [string, string][] = [['/admin', 'Dashboard'], ['/admin/users', 'Users'], ['/admin/channels', 'Channels'], ['/admin/series', 'Series'], ['/admin/movies', 'Movies'], ['/admin/shows', 'All shows'], ['/admin/avatars', 'Avatars']]
 const isActive = (path: string, to: string) => (to === '/admin' ? path === to : path === to || path.startsWith(to + '/'))
 
 export function AdminShell({ children }: { children: ReactNode }) {
