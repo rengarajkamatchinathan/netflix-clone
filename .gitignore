@@ -1,2 +1,15 @@
 node_modules
 dist
+.next
+next-env.d.ts
+*.tsbuildinfo
+.env
+
+# Channel logos used to seed the database stay local (copyright). Only the .json files are tracked.
+scripts/seed-data/**/*.jpg
+scripts/seed-data/**/*.jpeg
+scripts/seed-data/**/*.png
+scripts/seed-data/**/*.webp
+scripts/seed-data/**/*.avif
+scripts/seed-data/**/*.gif
+scripts/seed-data/**/*.svg

@@ -1,0 +1,98 @@
+-- StreamFlix schema. Safe to run repeatedly (npm run db:setup).
+
+create table if not exists users (
+  id serial primary key,
+  email text not null unique,
+  password_hash text not null,
+  role text not null default 'user' check (role in ('user', 'admin')),
+  disabled boolean not null default false,
+  -- Bumped on password change/reset to sign out every other session.
+  session_version int not null default 0,
+  recovery_fails int not null default 0,
+  recovery_locked_until timestamptz,
+  created_at timestamptz not null default now(),
+  last_login_at timestamptz
+);
+
+create table if not exists security_answers (
+  user_id int not null references users(id) on delete cascade,
+  slot smallint not null,
+  question_key text not null,
+  answer_hash text not null,
+  primary key (user_id, slot)
+);
+
+create table if not exists avatars (
+  id text primary key,
+  url text not null,
+  label text not null default '',
+  category text not null default 'Classics',
+  sort_order int not null default 0
+);
+
+create table if not exists profiles (
+  id serial primary key,
+  user_id int not null references users(id) on delete cascade,
+  name text not null,
+  avatar_id text references avatars(id) on delete set null,
+  color text not null default '#e50914',
+  is_kids boolean not null default false,
+  created_at timestamptz not null default now()
+);
+create index if not exists profiles_user_idx on profiles(user_id);
+
+create table if not exists channels (
+  id text primary key,
+  name text not null,
+  tagline text not null default '',
+  sort_order int not null default 999,
+  colors jsonb not null default '{}',
+  bumpers jsonb not null default '[]',   -- YouTube links
+  hidden boolean not null default false
+);
+-- Channel logo image, uploaded in the admin panel.
+alter table channels add column if not exists logo bytea;
+alter table channels add column if not exists logo_type text;
+alter table channels add column if not exists logo_updated_at timestamptz;
+
+create table if not exists titles (
+  id text primary key,
+  seq serial,
+  name text not null,
+  year int,
+  type text not null default 'tv',
+  genre text,
+  synopsis text,
+  category text,
+  maturity text,
+  image text,
+  poster text,
+  link text,
+  videos jsonb not null default '[]',    -- [{ title, url }]
+  needs_review boolean not null default false,
+  created_at timestamptz not null default now()
+);
+
+create table if not exists channel_titles (
+  channel_id text not null references channels(id) on delete cascade,
+  title_id text not null references titles(id) on delete cascade,
+  position int not null default 0,
+  primary key (channel_id, title_id)
+);
+create index if not exists channel_titles_title_idx on channel_titles(title_id);
+
+create table if not exists my_list (
+  profile_id int not null references profiles(id) on delete cascade,
+  title_id text not null references titles(id) on delete cascade,
+  added_at timestamptz not null default now(),
+  primary key (profile_id, title_id)
+);
+
+create table if not exists watch_progress (
+  profile_id int not null references profiles(id) on delete cascade,
+  title_id text not null references titles(id) on delete cascade,
+  pct int not null,
+  updated_at timestamptz not null default now(),
+  primary key (profile_id, title_id)
+);
+create index if not exists watch_progress_updated_idx on watch_progress(updated_at);

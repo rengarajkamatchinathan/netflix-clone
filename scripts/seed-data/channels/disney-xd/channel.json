@@ -1,0 +1,10 @@
+{
+  "name": "Disney XD",
+  "tagline": "Action & laughs",
+  "order": 4,
+  "colors": {
+    "bg": "#06140a",
+    "accent": "#39ff6a",
+    "accent2": "#0a7cff"
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "name": "Chutti TV",
+  "tagline": "Tamil kids favourites",
+  "order": 5,
+  "colors": {
+    "bg": "#2b1600",
+    "accent": "#ffb300",
+    "accent2": "#ff5252"
+  }
+}

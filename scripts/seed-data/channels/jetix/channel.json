@@ -1,0 +1,10 @@
+{
+  "name": "Jetix",
+  "tagline": "Non-stop action",
+  "order": 1,
+  "colors": {
+    "bg": "#0b0b0b",
+    "accent": "#ff3d00",
+    "accent2": "#ffd600"
+  }
+}

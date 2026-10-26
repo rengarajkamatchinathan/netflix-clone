@@ -1,0 +1,10 @@
+{
+  "name": "Pogo",
+  "tagline": "Fun all day",
+  "order": 3,
+  "colors": {
+    "bg": "#1a0b2e",
+    "accent": "#ff2e93",
+    "accent2": "#29e3ff"
+  }
+}

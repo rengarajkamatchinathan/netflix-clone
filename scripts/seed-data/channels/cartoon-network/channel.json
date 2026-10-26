@@ -1,0 +1,18 @@
+{
+  "name": "Cartoon Network",
+  "tagline": "Classic cartoons",
+  "order": 2,
+  "colors": {
+    "bg": "#111111",
+    "accent": "#ffffff",
+    "accent2": "#00c2ff"
+  },
+  "bumpers": [
+    "https://youtu.be/ZKmn-b8Opug",
+    "https://www.youtube.com/watch?v=yN9YXeFzZaA&pp=ygUcY2FydG9vbiBuZXR3b3JrIGJ1bXBlcnMgMjAxMA%3D%3D",
+    "https://www.youtube.com/watch?v=4g9whzqnlqU&pp=ygUiY2FydG9vbiBuZXR3b3JrIGJ1bXBlcnMgMjAxMCBpbmRpYQ%3D%3D",
+    "https://www.youtube.com/watch?v=iXKC59c8h38&pp=ygUiY2FydG9vbiBuZXR3b3JrIGJ1bXBlcnMgMjAxMCBpbmRpYQ%3D%3D",
+    "https://www.youtube.com/watch?v=gNkWiDP-qfE&pp=ygUiY2FydG9vbiBuZXR3b3JrIGJ1bXBlcnMgMjAxMCBpbmRpYQ%3D%3D",
+    "https://www.youtube.com/watch?v=ZJ8o_iUMyAQ&pp=ygUwY2FydG9vbiBuZXR3b3JrIGNvdXJhZ2UgdGhlIGNvd2FyZGx5IGRvZyBidW1wZXJz0gcJCSwMAYcqIYzv"
+  ]
+}
