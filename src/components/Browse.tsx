@@ -259,18 +259,62 @@ export function Row({ title, items, top10, link, viewAll, resume }: { title: str
 
 /* ---------- Billboard ---------- */
 
-export function Billboard({ t, rank }: { t: Title; rank?: number }) {
+const SLIDE_MS = 8000
+
+// The hero at the top of Browse. With several titles it is a carousel: each slide plays for
+// SLIDE_MS (shown by the progress bars), then cross-fades to the next. Hovering the text or
+// controls pauses it, as does a hidden tab; the arrows, bars and arrow keys move it by hand.
+export function Billboard({ items, start = 0 }: { items: { t: Title; rank?: number }[]; start?: number }) {
   const { openInfo, playTitle } = useBrowse()
   const { profile } = useApp()
+  const n = items.length
+  const [i, setI] = useState(() => start % n)
+  const [leaving, setLeaving] = useState<number | null>(null) // slide fading out underneath
+  const [run, setRun] = useState(0) // restarts the slide's animations and timers
   const [compact, setCompact] = useState(false)
-  const [run, setRun] = useState(0)
-  useEffect(() => { setCompact(false); const h = setTimeout(() => setCompact(true), 5000); return () => clearTimeout(h) }, [t.id, run])
+  const [hover, setHover] = useState(false)
+  const [hidden, setHidden] = useState(false)
+  const { t, rank } = items[Math.min(i, n - 1)]
+
+  const go = (to: number) => {
+    const next = ((to % n) + n) % n
+    if (next !== i) setLeaving(i)
+    setI(next)
+    setRun(r => r + 1)
+  }
+  useEffect(() => { setCompact(false); const h = setTimeout(() => setCompact(true), 5000); return () => clearTimeout(h) }, [i, run])
+  useEffect(() => { if (leaving === null) return; const h = setTimeout(() => setLeaving(null), 1200); return () => clearTimeout(h) }, [leaving, run])
+  useEffect(() => {
+    const vis = () => setHidden(document.hidden)
+    document.addEventListener('visibilitychange', vis)
+    return () => document.removeEventListener('visibilitychange', vis)
+  }, [])
+  // Left/right arrow keys, unless typing or a title's details are open.
+  const goRef = useRef(go)
+  goRef.current = go
+  const iRef = useRef(i)
+  iRef.current = i
+  useEffect(() => {
+    if (n < 2) return
+    const key = (e: KeyboardEvent) => {
+      if (e.target instanceof HTMLElement && e.target.closest('input, textarea, select')) return
+      if (document.querySelector('.modal-bg')) return
+      if (e.key === 'ArrowRight') goRef.current(iRef.current + 1)
+      else if (e.key === 'ArrowLeft') goRef.current(iRef.current - 1)
+    }
+    window.addEventListener('keydown', key)
+    return () => window.removeEventListener('keydown', key)
+  }, [n])
+
+  const paused = hover || hidden
+  const pause = { onMouseEnter: () => setHover(true), onMouseLeave: () => setHover(false) }
 
   return (
-    <section className="billboard">
-      <div className="billboard-art" key={run}><PosterArt t={t} bare /></div>
+    <section className={`billboard ${paused ? 'paused' : ''}`} aria-roledescription={n > 1 ? 'carousel' : undefined}>
+      {leaving !== null && leaving !== i && <div className="billboard-art leaving" key={`out-${leaving}-${run}`}><PosterArt t={items[leaving].t} bare /></div>}
+      <div className="billboard-art entering" key={`in-${i}-${run}`}><PosterArt t={t} bare /></div>
       <div className="billboard-vignette" />
-      <div className={`billboard-info ${compact ? 'compact' : ''}`}>
+      <div className={`billboard-info ${compact ? 'compact' : ''}`} key={`info-${i}-${run}`} {...pause}>
         <div className="series-tag"><span className="logo">S</span>{t.type === 'tv' ? 'SERIES' : 'FILM'}</div>
         <h1 className="title-treatment">{t.name}</h1>
         <div className="billboard-collapse">
@@ -282,10 +326,21 @@ export function Billboard({ t, rank }: { t: Title; rank?: number }) {
           <button className="btn grey" onClick={() => openInfo(t)}><Info size={26} /> More Info</button>
         </div>
       </div>
-      <div className="billboard-side">
+      <div className="billboard-side" {...pause}>
         <button className="round-outline" aria-label="Replay" onClick={() => setRun(r => r + 1)}><Replay size={20} /></button>
         <span className="maturity-flag">{t.maturity}</span>
       </div>
+      {n > 1 && <>
+        <button className="billboard-nav prev" aria-label="Previous title" onClick={() => go(i - 1)} {...pause}><ChevronLeft size={40} /></button>
+        <button className="billboard-nav next" aria-label="Next title" onClick={() => go(i + 1)} {...pause}><ChevronRight size={40} /></button>
+        <div className="billboard-dots" role="tablist" aria-label="Featured titles" {...pause}>
+          {items.map((x, k) => (
+            <button key={x.t.id} role="tab" aria-selected={k === i} aria-label={x.t.name} className={k === i ? 'on' : k < i ? 'done' : ''} onClick={() => go(k)}>
+              {k === i && <span key={run} style={{ animationDuration: `${SLIDE_MS}ms` }} onAnimationEnd={() => go(i + 1)} />}
+            </button>
+          ))}
+        </div>
+      </>}
     </section>
   )
 }

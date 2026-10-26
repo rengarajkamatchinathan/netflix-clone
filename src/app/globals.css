@@ -120,6 +120,31 @@ button.notif { width: 100%; text-align: left; background: none; border: 0; borde
 .sub-header h1 { font-size: 38px; font-weight: 700; }
 .billboard { position: relative; height: 56.25vw; max-height: 95vh; min-height: 460px; overflow: hidden; }
 .billboard-art { position: absolute; inset: 0; animation: kenburns 30s var(--ease) both; }
+/* Carousel: the new slide fades in over the old one, which then goes away. */
+.billboard-art.entering { animation: kenburns 30s var(--ease) both, bb-fade-in 1.1s ease both; }
+.billboard-art.leaving { animation: bb-fade-out 1.1s ease both; }
+@keyframes bb-fade-in { from { opacity: 0; } }
+@keyframes bb-fade-out { to { opacity: 0; } }
+.billboard-info { animation: bb-info-in .9s var(--ease-out) .25s both; }
+@keyframes bb-info-in { from { opacity: 0; transform: translateY(24px); } }
+.billboard-nav { position: absolute; top: 0; bottom: 30%; width: var(--gutter); min-width: 44px; z-index: 3; display: grid; place-items: center; color: #fff;
+  background: linear-gradient(90deg, rgba(0, 0, 0, .45), transparent); border: 0; opacity: 0; transition: opacity .3s ease; cursor: pointer; }
+.billboard-nav.prev { left: 0; }
+.billboard-nav.next { right: 0; background: linear-gradient(270deg, rgba(0, 0, 0, .45), transparent); }
+.billboard:hover .billboard-nav { opacity: .8; }
+.billboard-nav:hover, .billboard-nav:focus-visible { opacity: 1 !important; }
+.billboard-nav svg { transition: transform .2s ease; }
+.billboard-nav:hover svg { transform: scale(1.2); }
+.billboard-dots { position: absolute; right: var(--gutter); bottom: calc(35% - 52px); z-index: 3; display: flex; gap: 6px; }
+.billboard-dots button { position: relative; width: 28px; height: 4px; padding: 0; border: 0; border-radius: 2px; background: rgba(255, 255, 255, .3); overflow: hidden; cursor: pointer; transition: width .3s ease; }
+.billboard-dots button.done { background: rgba(255, 255, 255, .7); }
+.billboard-dots button.on { width: 44px; }
+.billboard-dots button span { position: absolute; inset: 0; background: #fff; transform-origin: left; animation: bb-progress linear both; }
+@keyframes bb-progress { from { transform: scaleX(0); } }
+.billboard.paused .billboard-dots span { animation-play-state: paused; }
+@media (prefers-reduced-motion: reduce) {
+  .billboard-art, .billboard-art.entering, .billboard-info { animation: none; }
+}
 .billboard-art .poster { height: 100%; aspect-ratio: auto; border-radius: 0; }
 @keyframes kenburns { from { transform: scale(1.15) translate(2%, 1%); } to { transform: scale(1) translate(0, 0); } }
 .billboard-vignette { position: absolute; inset: 0; background: linear-gradient(77deg, rgba(0, 0, 0, .6) 0%, transparent 85%), linear-gradient(180deg, transparent 0%, transparent 68%, rgba(20, 20, 20, .5) 82%, var(--bg) 100%); }
@@ -482,6 +507,8 @@ button.notif { width: 100%; text-align: left; background: none; border: 0; borde
   .billboard { height: 120vw; min-height: 0; max-height: 80vh; }
   .billboard-info { width: auto; right: var(--gutter); bottom: 22%; }
   .billboard-side { bottom: 22%; }
+  .billboard-dots { bottom: calc(22% - 40px); }
+  .billboard-nav { display: none; }
   .maturity-flag, .round-outline:not(.modal-mute) { display: none; }
   .rows { margin-top: -6vw; }
   .row { margin: 24px 0; }

@@ -22,8 +22,9 @@ export function BrowsePage({ type }: { type?: string }) {
   if (!profile) return null
   if (!rows.length) return <Grid heading={type ? HEADINGS[type] : ''} items={[]} empty="Nothing here yet. Add shows in the admin panel to fill this section." />
   const top = rows.find(r => r.top10)?.items || rows[0].items
-  const rank = new Date().getDate() % Math.min(top.length, 5)
-  const hero = top[rank]
+  // The top five take turns in the billboard, starting from a different one each day.
+  const featured = top.slice(0, 5).map((t, k) => ({ t, rank: k + 1 }))
+  const firstSlide = new Date().getDate() % featured.length
   const continuing = continueWatching(cat, profile)
   const because = becauseYouWatched(cat, profile)
   const myList = profile.list.map(id => cat.byId[id]).filter(Boolean)
@@ -32,7 +33,7 @@ export function BrowsePage({ type }: { type?: string }) {
     <div className="page">
       <Navbar />
       {type && <div className="sub-header"><h1>{HEADINGS[type]}</h1></div>}
-      <Billboard t={hero} rank={rank + 1} />
+      <Billboard key={type || 'home'} items={featured} start={firstSlide} />
       <div className="rows">
         {continuing.length > 0 && <Row title={`Continue Watching for ${profile.name}`} items={continuing} resume />}
         {!type && <ChannelStrip />}
