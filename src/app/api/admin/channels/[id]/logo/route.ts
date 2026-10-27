@@ -1,6 +1,6 @@
 import { getChannel } from '@/server/admin'
 import { requireAdmin } from '@/server/auth'
-import { logoUrl } from '@/server/catalog'
+import { catalogChanged, logoUrl } from '@/server/catalog'
 import { one, query } from '@/server/db'
 import { fail, handle, json } from '@/server/http'
 import { LOGO_TYPES, MAX_LOGO_BYTES } from '@/server/logos'
@@ -19,6 +19,7 @@ export const PUT = handle<P>(async (req, { id }) => {
   if (f.size > MAX_LOGO_BYTES) fail(400, 'Logos must be 2 MB or smaller.')
   const row = await one('update channels set logo = $2, logo_type = $3, logo_updated_at = now() where id = $1 returning logo_updated_at',
     [c.id, Buffer.from(await f.arrayBuffer()), f.type])
+  catalogChanged()
   return json({ image: logoUrl(c.id, row!.logo_updated_at) })
 })
 
@@ -26,5 +27,6 @@ export const DELETE = handle<P>(async (req, { id }) => {
   await requireAdmin()
   const c = await getChannel(id)
   await query('update channels set logo = null, logo_type = null, logo_updated_at = null where id = $1', [c.id])
+  catalogChanged()
   return json({ image: null })
 })

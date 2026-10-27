@@ -1,6 +1,7 @@
 import { slug } from '@/lib/ids'
 import { freeId, getTitle, setTitleChannels, titleFields, titleOut } from '@/server/admin'
 import { requireAdmin } from '@/server/auth'
+import { catalogChanged } from '@/server/catalog'
 import { many, tx } from '@/server/db'
 import { handle, json, readBody } from '@/server/http'
 import { newTitleHeading, notify } from '@/server/notifications'
@@ -26,5 +27,6 @@ export const POST = handle(async req => {
     await setTitleChannels(c, id, body.channels)
   })
   if (!f.hidden) await notify({ kind: 'title', titleId: id, heading: await newTitleHeading(id), body: f.name, at: f.publishAt })
+  catalogChanged()
   return json(await titleOut(await getTitle(id)), 201)
 })

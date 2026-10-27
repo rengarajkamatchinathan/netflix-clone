@@ -3,7 +3,8 @@ import pg from 'pg'
 if (!process.env.DATABASE_URL) throw new Error('DATABASE_URL is not set. Copy .env.example to .env and fill it in.')
 
 function createPool() {
-  const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 5, idleTimeoutMillis: 30_000 })
+  // A page render runs several queries at once; PG_POOL_MAX lets a host with a pooled (e.g. Neon -pooler) URL go higher.
+  const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: Number(process.env.PG_POOL_MAX) || 10, idleTimeoutMillis: 30_000 })
   // Neon drops idle connections (e.g. when the database suspends). Without this handler the
   // dropped connection's error would crash the server; the pool simply opens a new one next time.
   pool.on('error', err => console.warn('Database connection dropped:', err.message))

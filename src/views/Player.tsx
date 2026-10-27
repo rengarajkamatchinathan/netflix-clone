@@ -1,10 +1,12 @@
 'use client'
 import { useEffect, useRef, useState, type MouseEvent, type ReactNode } from 'react'
+import { preconnect } from 'react-dom'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useApp } from '@/context/AppContext'
 import { useCatalog } from '@/context/CatalogContext'
-import { airedVideo, episodesFor, nowPlaying, randomBumper, showAt, type Catalog } from '@/lib/catalog'
-import type { Bumper } from '@/lib/types'
+import { api } from '@/lib/api'
+import { airedVideo, episodesFor, nowPlaying, randomBumper, SAMPLE, showAt, type Catalog } from '@/lib/catalog'
+import type { Bumper, Video } from '@/lib/types'
 import { cssVars } from '@/components/ui'
 import {
   Back, Episodes, ExitFullscreen, Flag, Forward10, Fullscreen, Mute, NextEp, Pause, Play, Rewind10, Speed, Subtitles, Volume,
@@ -15,6 +17,20 @@ const fmt = (s: number) => {
   s = Math.max(0, Math.floor(s))
   const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), sec = String(s % 60).padStart(2, '0')
   return h ? `${h}:${String(m).padStart(2, '0')}:${sec}` : `${m}:${sec}`
+}
+
+// Episode links aren't in the catalog; the players load them once per title or channel and keep them.
+const videoCache = new Map<string, Promise<unknown>>()
+function useLoaded<T>(path: string | null, fallback: T): T | null {
+  const [data, setData] = useState<{ path: string; value: T } | null>(null)
+  useEffect(() => {
+    if (!path) return
+    let live = true
+    if (!videoCache.has(path)) videoCache.set(path, api<T>(path).catch(() => { videoCache.delete(path); return fallback }))
+    ;(videoCache.get(path) as Promise<T>).then(value => { if (live) setData({ path, value }) })
+    return () => { live = false }
+  }, [path])
+  return !path ? fallback : data?.path === path ? data.value : null
 }
 
 interface ShellProps {
@@ -176,6 +192,8 @@ export function WatchPage({ id }: { id: string }) {
   const { profile, saveProgress, savePosition } = useApp()
   const { byId } = useCatalog()
   const t = byId[id]
+  // Only shows with episode links need them loaded; the rest play placeholder episodes.
+  const videos = useLoaded<Video[]>(t?.episodes ? `/titles/${encodeURIComponent(t.id)}/videos` : null, [])
   const ep = Number(params.get('ep')) || 1
   const lastSave = useRef(0)
   const [showEps, setShowEps] = useState(false)
@@ -185,13 +203,14 @@ export function WatchPage({ id }: { id: string }) {
     if (t?.type === 'tv' && profile && saved?.episode !== ep) savePosition(t.id, { season: saved?.season ?? 1, episode: ep })
   }, [t?.id, ep])
   if (!t) return <div className="player"><p className="center">Title not found</p></div>
-  const eps = episodesFor(t)
+  if (!videos) return <div className="player" />
+  const eps = episodesFor(t, videos)
   const cur = eps[ep - 1] || eps[0]
   const hasNext = t.type === 'tv' && ep < eps.length
   const goEp = (n: number) => router.replace(`/watch/${t.id}?ep=${n}`)
 
   return (
-    <VideoShell key={`${id}-${ep}`} src={cur?.url || t.videoUrl}
+    <VideoShell key={`${id}-${ep}`} src={cur?.url || videos.find(v => v?.url)?.url || SAMPLE}
       title={t.name} subtitle={t.type === 'tv' && eps.length > 1 ? `E${cur.n}  ${cur.name}` : ''} synopsis={cur?.blurb || t.synopsis}
       onBack={() => router.back()}
       onTime={(pos, dur) => {
@@ -239,11 +258,12 @@ export function LivePage({ id }: { id: string }) {
   const c = cat.channelById[id]
   const [state, setState] = useState<LiveState>(() => initialLive(cat, id))
   const [banner, setBanner] = useState(true)
+  const videos = useLoaded<Record<string, Video[]>>(c ? `/channels/${encodeURIComponent(id)}/videos` : null, {})
 
   useEffect(() => { setState(initialLive(cat, id)); setBanner(true) }, [id])
   useEffect(() => { setBanner(true); const h = setTimeout(() => setBanner(false), 6000); return () => clearTimeout(h) }, [state.slot, state.phase])
 
-  if (!c) return null
+  if (!c || !videos) return null
   const { channels } = cat
   const idx = channels.findIndex(x => x.id === id)
   const zap = (d: number) => router.replace(`/live/${channels[(idx + d + channels.length) % channels.length].id}`)
@@ -285,7 +305,7 @@ export function LivePage({ id }: { id: string }) {
   }
 
   return (
-    <VideoShell key={`${id}-${state.slot}-${state.phase}`} src={airedVideo(show, state.slot)} startAt={state.offset}
+    <VideoShell key={`${id}-${state.slot}-${state.phase}`} src={airedVideo(show, state.slot, videos[show.id])} startAt={state.offset}
       title={c.name} subtitle={`LIVE · ${show.name}`} synopsis={show.synopsis}
       onBack={() => router.push(`/channel/${id}`)} onEnded={onEnded}
       overlay={overlay}
@@ -305,6 +325,13 @@ interface YTNamespace {
 }
 declare global {
   interface Window { YT?: YTNamespace; onYouTubeIframeAPIReady?: () => void }
+}
+
+// Opens the connections a YouTube clip needs (API script, player, stills) ahead of loading it.
+export function preconnectYouTube() {
+  preconnect('https://www.youtube.com')
+  preconnect('https://www.youtube-nocookie.com')
+  preconnect('https://i.ytimg.com')
 }
 
 // Loads YouTube's IFrame Player API once and resolves with the global YT object.
@@ -338,6 +365,7 @@ export function YouTubeClip({ videoId, muted = false, loop = false, onEnded, onA
   const [playing, setPlaying] = useState(false)
   const cb = useRef({ onEnded, onAutoMuted, loop, muted })
   cb.current = { onEnded, onAutoMuted, loop, muted }
+  preconnectYouTube()
 
   useEffect(() => {
     let cancelled = false

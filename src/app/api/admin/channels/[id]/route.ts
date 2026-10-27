@@ -1,6 +1,6 @@
 import { channelFields, channelOut, confirmMatches, getChannel } from '@/server/admin'
 import { requireAdmin } from '@/server/auth'
-import { weeklyViewers } from '@/server/catalog'
+import { catalogChanged, weeklyViewers } from '@/server/catalog'
 import { many, query } from '@/server/db'
 import { handle, json, readBody } from '@/server/http'
 import { notify } from '@/server/notifications'
@@ -25,6 +25,7 @@ export const PUT = handle<P>(async (req, { id }) => {
   await query('update channels set name = $2, tagline = $3, colors = $4, bumpers = $5, hidden = $6, schedule = $7, top10 = $8 where id = $1',
     [c.id, f.name, f.tagline, JSON.stringify(f.colors), JSON.stringify(f.bumpers), f.hidden, JSON.stringify(f.schedule), JSON.stringify(f.top10)])
   if (c.hidden && !f.hidden) await notify({ kind: 'channel', channelId: c.id, heading: 'Now live', body: `${f.name} is back on air` })
+  catalogChanged()
   return json(channelOut(await getChannel(c.id)))
 })
 
@@ -33,5 +34,6 @@ export const DELETE = handle<P>(async (req, { id }) => {
   const c = await getChannel(id)
   confirmMatches((await readBody(req)).confirm, c.name, 'channel name')
   await query('delete from channels where id = $1', [c.id])
+  catalogChanged()
   return json({ ok: true })
 })

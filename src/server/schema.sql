@@ -152,5 +152,7 @@ create table if not exists notifications (
   created_at timestamptz not null default now()
 );
 create index if not exists notifications_created_idx on notifications(created_at desc);
+-- Latest "New episodes" per show, for the catalog.
+create index if not exists notifications_episodes_idx on notifications(title_id, created_at) where kind = 'episodes';
 -- Notifications newer than this are unread for the profile.
 alter table profiles add column if not exists notif_seen_at timestamptz not null default now();

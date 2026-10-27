@@ -1,13 +1,14 @@
 'use client'
-import { useEffect, useLayoutEffect, useRef, useState, type MouseEvent, type ReactNode } from 'react'
+import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type MouseEvent, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import Link from 'next/link'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { useApp } from '@/context/AppContext'
 import { useCatalog } from '@/context/CatalogContext'
-import { BrowseCtx, useBrowse, type CardRect, type Origin, type Rect } from '@/context/BrowseContext'
+import { BrowseCtx, useBrowse, type BrowseValue, type CardRect, type Origin, type Rect } from '@/context/BrowseContext'
 import { hash, timeLabel, topToday, upNext, type Channel, type Title } from '@/lib/catalog'
 import type { WatchPosition } from '@/lib/types'
+import { useNow } from './Providers'
 import { cssVars, PosterArt } from './ui'
 import { setLogoChannel } from './FloatingLogo'
 import { Check, ChevronDown, ChevronLeft, ChevronRight, Close, Info, Play, Plus, Replay, ThumbUp, Volume } from './icons'
@@ -28,25 +29,30 @@ export function BrowseProvider({ children }: { children: ReactNode }) {
   const { channelById } = useCatalog()
   useEffect(() => { setPreview(null); setInfo(null) }, [pathname, search])
 
-  const openInfo = (t: Title, rect: Rect = null) => { setPreview(null); setInfo({ t, rect }) }
-  // The floating channel logo (pop-out or extension) switches to the show's channel as it opens.
-  const openLink = (t: Title) => {
-    setPreview(null)
-    if (t.channel && channelById[t.channel]) setLogoChannel(channelById[t.channel])
-    window.open(t.link!, '_blank', 'noopener,noreferrer')
-  }
-  // Clicking a title always opens the preview modal; its Play button is what opens the link.
-  const openTitle = (t: Title, rect: Rect = null) => openInfo(t, rect)
-  // Play: open its link in a new tab if it has one, otherwise the built-in player at the
-  // episode the profile is up to.
-  const playTitle = (t: Title) => {
-    recordPlay(t.id)
-    if (t.link) return openLink(t)
-    const pos = t.type === 'tv' ? profile?.position[t.id] : undefined
-    router.push(`/watch/${t.id}${pos ? `?ep=${pos.episode}` : ''}`)
-  }
+  // Kept stable while a preview or modal opens, so the cards (which only use these actions) don't
+  // all re-render on every hover.
+  const value = useMemo((): BrowseValue => {
+    const openInfo = (t: Title, rect: Rect = null) => { setPreview(null); setInfo({ t, rect }) }
+    // The floating channel logo (pop-out or extension) switches to the show's channel as it opens.
+    const openLink = (t: Title) => {
+      setPreview(null)
+      if (t.channel && channelById[t.channel]) setLogoChannel(channelById[t.channel])
+      window.open(t.link!, '_blank', 'noopener,noreferrer')
+    }
+    // Clicking a title always opens the preview modal; its Play button is what opens the link.
+    const openTitle = (t: Title, rect: Rect = null) => openInfo(t, rect)
+    // Play: open its link in a new tab if it has one, otherwise the built-in player at the
+    // episode the profile is up to.
+    const playTitle = (t: Title) => {
+      recordPlay(t.id)
+      if (t.link) return openLink(t)
+      const pos = t.type === 'tv' ? profile?.position[t.id] : undefined
+      router.push(`/watch/${t.id}${pos ? `?ep=${pos.episode}` : ''}`)
+    }
+    return { openInfo, openTitle, playTitle, setPreview }
+  }, [profile, recordPlay, channelById, router])
   return (
-    <BrowseCtx.Provider value={{ openInfo, openTitle, playTitle, setPreview }}>
+    <BrowseCtx.Provider value={value}>
       {children}
       {preview && createPortal(<Preview key={`${preview.t.id}-${preview.rect.left}-${preview.rect.top}`} {...preview} onClose={() => setPreview(null)} />, document.body)}
       {info && createPortal(<DetailModal key={info.t.id + (info.rect ? 'r' : '')} t={info.t} rect={info.rect} onClose={() => setInfo(null)} />, document.body)}
@@ -164,7 +170,7 @@ function Preview({ t, rect, origin, onClose }: { t: Title; rect: CardRect; origi
     <div ref={ref} className={`preview ${shown ? 'shown' : ''}`} onMouseLeave={leave} onMouseEnter={enter}
       style={cssVars({ left, top, width: w, '--from': `translate(${rect.left - left}px, ${rect.top - top + (artH * s - rect.height) / -2}px) scale(${s})` })}>
       <div className="preview-art" onClick={() => openInfo(t, ref.current!.getBoundingClientRect())}>
-        <PosterArt t={t}><Progress pct={profile?.progress[t.id]} /></PosterArt>
+        <PosterArt t={t} sizes={`${Math.round(w)}px`}><Progress pct={profile?.progress[t.id]} /></PosterArt>
       </div>
       <div className="preview-info">
         <div className="preview-btns">
@@ -183,7 +189,7 @@ function Preview({ t, rect, origin, onClose }: { t: Title; rect: CardRect; origi
 
 /* ---------- Cards and rows ---------- */
 
-export function TitleCard({ t, tall, origin = 'center', resume }: { t: Title; tall?: boolean; origin?: Origin; resume?: boolean }) {
+export const TitleCard = memo(function TitleCard({ t, tall, origin = 'center', resume }: { t: Title; tall?: boolean; origin?: Origin; resume?: boolean }) {
   const { setPreview, openTitle } = useBrowse()
   const { profile } = useApp()
   const ref = useRef<HTMLDivElement>(null)
@@ -205,14 +211,14 @@ export function TitleCard({ t, tall, origin = 'center', resume }: { t: Title; ta
       </PosterArt>
     </div>
   )
-}
+})
 
-function usePerRow() {
-  const calc = () => { const w = window.innerWidth; return w > 1400 ? 6 : w > 1100 ? 5 : w > 800 ? 4 : w > 500 ? 3 : 2 }
-  const [n, setN] = useState(calc)
-  useEffect(() => { const on = () => setN(calc()); window.addEventListener('resize', on); return () => window.removeEventListener('resize', on) }, [])
-  return n
-}
+// Cards per row, from the window width. Card widths come from the same breakpoints in CSS
+// (.slider --per), so the server can render rows (assuming a wide window) and only paging waits
+// for the real width.
+const perRowFor = (w: number) => (w > 1400 ? 6 : w > 1100 ? 5 : w > 800 ? 4 : w > 500 ? 3 : 2)
+const onResize = (cb: () => void) => { window.addEventListener('resize', cb); return () => window.removeEventListener('resize', cb) }
+const usePerRow = () => useSyncExternalStore(onResize, () => perRowFor(window.innerWidth), () => 6)
 
 function RankNumber({ n }: { n: number }) {
   return (
@@ -222,7 +228,7 @@ function RankNumber({ n }: { n: number }) {
   )
 }
 
-export function Row({ title, items, top10, link, viewAll, resume }: { title: string; items: Title[]; top10?: boolean; link?: string; viewAll?: string; resume?: boolean }) {
+export const Row = memo(function Row({ title, items, top10, link, viewAll, resume }: { title: string; items: Title[]; top10?: boolean; link?: string; viewAll?: string; resume?: boolean }) {
   // Top 10 always uses tall cards: the show's "poster" image, or its main image when it has none.
   const per = usePerRow()
   const pages = Math.ceil(items.length / per)
@@ -247,7 +253,7 @@ export function Row({ title, items, top10, link, viewAll, resume }: { title: str
             const pos = i % per
             const origin: Origin = pos === 0 ? 'left' : pos === per - 1 ? 'right' : 'center'
             return (
-              <div key={t.id} className="slider-item" style={{ flexBasis: `${100 / per}%` }}>
+              <div key={t.id} className="slider-item">
                 {top10
                   ? <div className="top10-item"><RankNumber n={i + 1} /><TitleCard t={t} tall origin={origin} /></div>
                   : <TitleCard t={t} origin={origin} resume={resume} />}
@@ -259,7 +265,7 @@ export function Row({ title, items, top10, link, viewAll, resume }: { title: str
       </div>
     </section>
   )
-}
+})
 
 /* ---------- Billboard ---------- */
 
@@ -315,8 +321,9 @@ export function Billboard({ items, start = 0 }: { items: { t: Title; rank?: numb
 
   return (
     <section className={`billboard ${paused ? 'paused' : ''}`} aria-roledescription={n > 1 ? 'carousel' : undefined}>
-      {leaving !== null && leaving !== i && <div className="billboard-art leaving" key={`out-${leaving}-${run}`}><PosterArt t={items[leaving].t} bare /></div>}
-      <div className="billboard-art entering" key={`in-${i}-${run}`}><PosterArt t={t} bare /></div>
+      {leaving !== null && leaving !== i && <div className="billboard-art leaving" key={`out-${leaving}-${run}`}><PosterArt t={items[leaving].t} bare sizes="100vw" /></div>}
+      {/* The opening slide is the largest image on the page, so it loads first. */}
+      <div className="billboard-art entering" key={`in-${i}-${run}`}><PosterArt t={t} bare sizes="100vw" eager={i === start % n} /></div>
       <div className="billboard-vignette" />
       <div className={`billboard-info ${compact ? 'compact' : ''}`} key={`info-${i}-${run}`} {...pause}>
         <div className="series-tag"><span className="logo">S</span>{t.type === 'tv' ? 'SERIES' : 'FILM'}</div>
@@ -391,7 +398,7 @@ export function DetailModal({ t, rect, onClose }: { t: Title; rect: Rect; onClos
       <div className="modal" ref={ref} onClick={e => e.stopPropagation()}>
         <button className="modal-close" onClick={close} aria-label="Close"><Close size={22} /></button>
         <div className="modal-hero">
-          <PosterArt t={t} bare backdrop />
+          <PosterArt t={t} bare backdrop sizes="(max-width: 850px) 100vw, 850px" />
           <div className="modal-hero-fade" />
           <div className="modal-hero-info">
             <h1 className="title-treatment">{t.name}</h1>
@@ -423,7 +430,7 @@ export function DetailModal({ t, rect, onClose }: { t: Title; rect: Rect; onClos
             <div className="more-grid">
               {more.map(m => (
                 <div key={m.id} className="more-card" onClick={() => openTitle(m)}>
-                  <div className="more-art"><PosterArt t={m} /><span className="more-len">{lengthOf(m)}</span><span className="ep-play"><Play size={20} /></span></div>
+                  <div className="more-art"><PosterArt t={m} sizes="(max-width: 600px) 50vw, 270px" /><span className="more-len">{lengthOf(m)}</span><span className="ep-play"><Play size={20} /></span></div>
                   <div className="more-body">
                     <div className="more-top">
                       <div><div className="match">{m.match}% Match</div><span className="maturity">{m.maturity}</span> <span className="muted">{m.year}</span></div>
@@ -451,21 +458,21 @@ export function DetailModal({ t, rect, onClose }: { t: Title; rect: Rect; onClos
 /* ---------- Channels ---------- */
 
 // "On Now": what every channel is airing right now, from its schedule. A card opens the live channel.
+// The schedule follows the viewer's clock, so the server sends placeholder cards in its place.
 export function OnNowRow() {
   const cat = useCatalog()
   const router = useRouter()
-  const [now, setNow] = useState(() => new Date())
-  useEffect(() => { const h = setInterval(() => setNow(new Date()), 30000); return () => clearInterval(h) }, [])
+  const now = useNow()
   return (
     <section className="row">
       <h2 className="row-header"><Link href="/channels" className="row-title">On Now<span className="explore">All Channels <ChevronRight size={14} /></span></Link></h2>
       <div className="channel-strip">
-        {cat.channels.map(c => {
+        {!now ? cat.channels.map(c => <span key={c.id} className="onnow-card skel" />) : cat.channels.map(c => {
           const { current, endsAt } = upNext(cat, c.id, 1, now)
           if (!current) return null
           return (
             <button key={c.id} type="button" className="onnow-card" onClick={() => router.push(`/live/${c.id}`)} aria-label={`Watch ${current.name} live on ${c.name}`}>
-              <PosterArt t={current} bare />
+              <PosterArt t={current} bare sizes="320px" />
               <span className="onnow-shade" />
               {/* eslint-disable-next-line @next/next/no-img-element */}
               {c.image ? <img className="onnow-logo" src={c.image} alt="" /> : <span className="onnow-chan" style={{ color: c.accent }}>{c.name}</span>}

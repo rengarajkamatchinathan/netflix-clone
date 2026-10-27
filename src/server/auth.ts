@@ -52,11 +52,18 @@ export async function endSession() {
 }
 
 // The signed-in user, or null. A disabled account or a stale session_version counts as signed out.
-export async function currentUser(): Promise<SessionUser | null> {
+export const SESSION_USER_COLS = 'id, email, role, disabled, session_version, created_at'
+export async function sessionClaims(): Promise<{ uid: number; sv: number } | null> {
   const claims = readToken((await cookies()).get(SESSION_COOKIE)?.value)
-  if (!claims?.uid) return null
-  const u = await one<SessionUser>('select id, email, role, disabled, session_version, created_at from users where id = $1', [claims.uid])
-  return u && !u.disabled && u.session_version === claims.sv ? u : null
+  return claims?.uid ? (claims as { uid: number; sv: number }) : null
+}
+export const sessionValid = (u: SessionUser | null, claims: { sv: number }) => !!u && !u.disabled && u.session_version === claims.sv
+
+export async function currentUser(): Promise<SessionUser | null> {
+  const claims = await sessionClaims()
+  if (!claims) return null
+  const u = await one<SessionUser>(`select ${SESSION_USER_COLS} from users where id = $1`, [claims.uid])
+  return sessionValid(u, claims) ? u : null
 }
 
 export async function requireUser(): Promise<SessionUser> {

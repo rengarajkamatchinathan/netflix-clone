@@ -36,7 +36,7 @@ export interface RawTitle {
   backdrop: string | null // info modal background
   crops: ImageCrops
   link: string | null
-  videos: Video[]
+  episodes: number // how many episode links it has; the player loads them from /api/titles/<id>/videos
   needsReview: boolean
   channels: string[]
   viewers: TitleViewers

@@ -1,5 +1,6 @@
 import { confirmMatches, getTitle, setTitleChannels, titleFields, titleOut } from '@/server/admin'
 import { requireAdmin } from '@/server/auth'
+import { catalogChanged } from '@/server/catalog'
 import { query, tx } from '@/server/db'
 import { handle, json, readBody } from '@/server/http'
 import { newTitleHeading, notify } from '@/server/notifications'
@@ -32,6 +33,7 @@ export const PUT = handle<P>(async (req, { id }) => {
     const n = f.videos.length - t.videos.length
     await notify({ kind: 'episodes', titleId: t.id, heading: 'New episodes', body: `${f.name}: ${n} new episode${n === 1 ? '' : 's'}` })
   }
+  catalogChanged()
   return json(await titleOut(await getTitle(t.id)))
 })
 
@@ -40,5 +42,6 @@ export const DELETE = handle<P>(async (req, { id }) => {
   const t = await getTitle(id)
   confirmMatches((await readBody(req)).confirm, t.name, 'show title')
   await query('delete from titles where id = $1', [t.id])
+  catalogChanged()
   return json({ ok: true })
 })

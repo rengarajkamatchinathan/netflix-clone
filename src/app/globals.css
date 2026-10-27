@@ -13,8 +13,8 @@
   --gutter: 4%;
   --ease: cubic-bezier(.5, 0, .1, 1);
   --ease-out: cubic-bezier(.21, .85, .29, 1);
-  --font: Inter, 'Helvetica Neue', Helvetica, Arial, sans-serif;
-  --display: 'Bebas Neue', Impact, 'Arial Narrow', sans-serif;
+  --font: var(--font-inter), Inter, 'Helvetica Neue', Helvetica, Arial, sans-serif;
+  --display: var(--font-bebas), 'Bebas Neue', Impact, 'Arial Narrow', sans-serif;
 }
 * { box-sizing: border-box; margin: 0; padding: 0; }
 html { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
@@ -72,7 +72,9 @@ ul { list-style: none; }
 /* ============ Navbar ============ */
 .nav { position: fixed; top: 0; left: 0; right: 0; z-index: 50; display: flex; align-items: center; height: 68px; padding: 0 var(--gutter); background-image: linear-gradient(180deg, rgba(0, 0, 0, .7) 10%, transparent); transition: background-color .4s; }
 .nav.solid { background-color: var(--bg); }
-.nav-logo { margin-right: 25px; display: flex; }
+.nav-logo { margin-right: 25px; display: flex; flex-direction: column; align-items: flex-end; }
+/* Build version, small under the logo's right edge. */
+.nav-version { margin-top: 3px; font-size: 10px; font-weight: 500; line-height: 1; letter-spacing: .06em; color: rgba(255, 255, 255, .5); white-space: nowrap; }
 .nav-links { display: flex; align-items: center; }
 .nav-links a { margin-left: 20px; font-size: 14px; color: var(--text-2); transition: color .4s; }
 .nav-links a:hover { color: #b3b3b3; }
@@ -177,7 +179,13 @@ button.notif { width: 100%; text-align: left; background: none; border: 0; borde
 
 .slider { position: relative; padding: 0 var(--gutter); overflow: hidden; }
 .slider-inner { display: flex; transition: transform .75s var(--ease); will-change: transform; }
-.slider-item { flex: 0 0 auto; padding: 0 .2vw; min-width: 0; }
+.slider-item { flex: 0 0 calc(100% / var(--per)); padding: 0 .2vw; min-width: 0; }
+/* Cards per row; Row's paging uses the same breakpoints (perRowFor in Browse.tsx). */
+.slider { --per: 6; }
+@media (max-width: 1400px) { .slider { --per: 5; } }
+@media (max-width: 1100px) { .slider { --per: 4; } }
+@media (max-width: 800px) { .slider { --per: 3; } }
+@media (max-width: 500px) { .slider { --per: 2; } }
 .handle { position: absolute; top: 0; bottom: 0; z-index: 4; width: calc(var(--gutter) - .2vw); background: rgba(20, 20, 20, .5); color: #fff; display: grid; place-items: center; opacity: 0; transition: opacity .2s, background .2s; }
 .handle svg { transition: transform .15s; }
 .slider:hover .handle { opacity: 1; }
@@ -642,6 +650,8 @@ button.notif { width: 100%; text-align: left; background: none; border: 0; borde
 .hero-bumper video, .hero-bumper iframe { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); border: 0; object-fit: cover; }
 .hero-bumper video { width: 100%; height: 100%; }
 .hero-bumper iframe { width: max(100cqw, calc(100cqh * 16 / 9)); height: max(100cqh, calc(100cqw * 9 / 16)); }
+/* The bumper's still, shown until the YouTube clip is playing over it. */
+.hero-bumper-still { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
 .hero-bumper-shade { position: absolute; inset: 0; background: linear-gradient(77deg, rgba(0, 0, 0, .85) 0%, rgba(0, 0, 0, .55) 45%, rgba(0, 0, 0, .25) 100%), linear-gradient(180deg, rgba(0, 0, 0, .35) 0%, transparent 25%); }
 /* Channel header: copy on the left over the bumper, anchored to the bottom. At least one screen
    tall but grows with its content on short windows, so nothing is clipped. The rows below overlap
@@ -865,3 +875,13 @@ img.avatar { object-fit: cover; background: #222; }
 .pip-body:hover .pip-bar, .pip-body.pinned .pip-bar { opacity: 1; }
 .pip-bar button { width: 26px; height: 26px; border: 0; border-radius: 50%; background: none; color: #fff; font-size: 15px; line-height: 1; cursor: pointer; }
 .pip-bar button:hover, .pip-bar button:focus-visible { background: rgba(255, 255, 255, .2); outline: none; }
+
+/* ============ Loading placeholders (server-rendered before the clock or data is known) ============ */
+@keyframes skel { 50% { opacity: .45; } }
+.skel { display: block; background: #222; animation: skel 1.6s ease-in-out infinite; }
+.onnow-card.skel { cursor: default; }
+.page-skel { min-height: 100vh; padding-top: 68px; }
+.page-skel .skel-hero { height: 56.25vw; max-height: 80vh; }
+.page-skel .skel-row { display: flex; gap: .4vw; padding: 0 var(--gutter); margin: 3vw 0; }
+.page-skel .skel-row span { flex: 0 0 calc((100% - 2vw) / 6); aspect-ratio: 16 / 9; border-radius: 4px; }
+@media (max-width: 800px) { .page-skel .skel-row span { flex-basis: calc((100% - .8vw) / 3); } }

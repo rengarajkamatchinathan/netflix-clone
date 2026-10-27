@@ -5,7 +5,8 @@ import type { Bumper, CatalogData, ImageCrops, RawChannel, RawTitle, ScheduleBlo
 
 export { hash, youtubeId }
 
-const SAMPLE = 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4'
+// Played when a show has no episode links of its own.
+export const SAMPLE = 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4'
 const KIDS_RATINGS = ['U', 'U/A 7+']
 const ADULT_RATINGS = ['U/A 13+', 'U/A 16+']
 const DEFAULT_COLORS = { bg: '#141414', accent: '#e50914', accent2: '#ffffff' }
@@ -32,9 +33,7 @@ export interface Title {
   poster: string | null
   backdrop: string | null
   crops: ImageCrops
-  videos: Video[]
-  hasMedia: boolean
-  videoUrl: string
+  episodes: number // episode links; the player loads the links themselves (see episodesFor)
   viewers: TitleViewers
   addedAt: string | null
   episodesAt: string | null
@@ -66,7 +65,6 @@ export interface Catalog {
 
 function toTitle(s: RawTitle, i: number): Title {
   const h = hash(s.id)
-  const videos = (s.videos || []).filter(v => v?.url)
   return {
     id: s.id,
     name: s.title,
@@ -88,9 +86,7 @@ function toTitle(s: RawTitle, i: number): Title {
     poster: s.poster || null,
     backdrop: s.backdrop || null,
     crops: s.crops || {},
-    videos,
-    hasMedia: videos.length > 0,
-    videoUrl: videos[0]?.url || SAMPLE,
+    episodes: s.episodes || 0,
     viewers: s.viewers || { day: 0, week: 0, prev: 0 },
     addedAt: s.addedAt || null,
     episodesAt: s.episodesAt || null,
@@ -132,10 +128,11 @@ export function buildCatalog(data: CatalogData, kidsOnly = false): Catalog {
 export interface Episode { n: number; name: string; minutes: number | null; blurb: string; url: string }
 
 // Real episodes come from the show's "videos" links; otherwise six placeholder episodes.
-export function episodesFor(t: Title): Episode[] {
+export function episodesFor(t: Title, videos: Video[]): Episode[] {
   if (t.type !== 'tv') return []
-  if (t.videos.length) {
-    return t.videos.map((v, i) => ({ n: i + 1, name: v.title || `Episode ${i + 1}`, minutes: null, blurb: '', url: v.url }))
+  videos = videos.filter(v => v?.url)
+  if (videos.length) {
+    return videos.map((v, i) => ({ n: i + 1, name: v.title || `Episode ${i + 1}`, minutes: null, blurb: '', url: v.url }))
   }
   return Array.from({ length: 6 }, (_, i) => ({
     n: i + 1, name: `Episode ${i + 1}`, minutes: 20 + ((hash(t.id) + i * 7) % 25),
@@ -151,8 +148,11 @@ export interface RowData { title: string; items: Title[]; top10?: boolean; resum
 const DAY_MS = 86400000
 const within = (iso: string | null, days: number) => !!iso && Date.now() - Date.parse(iso) < days * DAY_MS
 const shuffle = (arr: Title[], seed: string) => [...arr].sort((a, b) => (hash(a.id + seed) % 1000) - (hash(b.id + seed) % 1000))
+// Today's date in UTC: seeds the picks that change once a day. UTC rather than local time so the
+// server renders the same rows as the viewer's browser in any time zone.
+export const dayKey = () => new Date().toISOString().slice(0, 10)
 // A stable order that changes once a day, for rows with no ranking of their own.
-const daily = (arr: Title[], seed: string) => shuffle(arr, seed + new Date().toDateString())
+const daily = (arr: Title[], seed: string) => shuffle(arr, seed + dayKey())
 const ids = (list: Title[]) => new Set(list.map(t => t.id))
 
 // The channels' own Top 10s taken in turn (every #1, then every #2, …): what to show while there
@@ -164,7 +164,15 @@ function channelPicks(cat: Catalog, pool: Set<string>): Title[] {
 }
 
 // "Top 10 Today": most viewers in the last day, then in the last week, then the channels' Top 10s.
-export function topToday(cat: Catalog, pool: Title[] = cat.titles): Title[] {
+// The whole-catalog list is kept per catalog, since the info modal asks for it on every open.
+const topCache = new WeakMap<Catalog, Title[]>()
+export function topToday(cat: Catalog, pool?: Title[]): Title[] {
+  if (pool) return rankToday(cat, pool)
+  let top = topCache.get(cat)
+  if (!top) topCache.set(cat, (top = rankToday(cat, cat.titles)))
+  return top
+}
+function rankToday(cat: Catalog, pool: Title[]): Title[] {
   const played = pool.filter(t => t.viewers.week > 0).sort((a, b) => b.viewers.day - a.viewers.day || b.viewers.week - a.viewers.week)
   return [...new Set([...played, ...channelPicks(cat, ids(pool)), ...daily(pool, 'top')])].slice(0, 10)
 }
@@ -338,10 +346,11 @@ export const timeLabel =(d: Date) => d.toLocaleTimeString([], { hour: 'numeric',
 // "7:00 AM" for minutes from midnight, in the viewer's own clock format.
 export const clockLabel = (m: number) => new Date(2000, 0, 1, 0, m).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
 
-// Which episode a channel airs for a show in a given slot.
-export function airedVideo(t: Title, slot: number): string {
-  if (!t.videos.length) return t.videoUrl
-  return t.videos[hash(`${t.id}:${slot}`) % t.videos.length].url
+// Which episode a channel airs for a show in a given slot (`videos` is the show's links, if loaded).
+export function airedVideo(t: Title, slot: number, videos: Video[] = []): string {
+  videos = videos.filter(v => v?.url)
+  if (!videos.length) return SAMPLE
+  return videos[hash(`${t.id}:${slot}`) % videos.length].url
 }
 
 // Random bumper; when the channel has more than one, never the same as `previous`.
@@ -368,7 +377,7 @@ export function continueWatching(cat: Catalog, v: Pick<Viewing, 'recent' | 'prog
 export function becauseYouWatched(cat: Catalog, v: Pick<Viewing, 'recent'>, channelId?: string): { source: Title; items: Title[] } | null {
   const lastFew = v.recent.map(id => cat.byId[id]).filter(t => t && onChannel(t, channelId)).slice(0, 3)
   if (!lastFew.length) return null
-  const source = lastFew[hash(new Date().toDateString()) % lastFew.length]
+  const source = lastFew[hash(dayKey()) % lastFew.length]
   const seen = new Set(v.recent)
   const score = (t: Title) => (t.genre === source.genre ? 3 : 0) + (t.type === source.type ? 2 : 0)
     + (t.year && source.year && Math.abs(t.year - source.year) <= 5 ? 1 : 0)

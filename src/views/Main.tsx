@@ -5,13 +5,14 @@ import Link from 'next/link'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { useApp } from '@/context/AppContext'
 import { useCatalog } from '@/context/CatalogContext'
-import { becauseYouWatched, blockAt, daySchedule, channelTitles, clockLabel, continueWatching, nowPlaying, randomBumper, rowsFor, search, searchSuggestions, timeLabel, upNext, type Channel, type Title } from '@/lib/catalog'
+import { becauseYouWatched, blockAt, daySchedule, channelTitles, clockLabel, continueWatching, dayKey, nowPlaying, randomBumper, rowsFor, search, searchSuggestions, timeLabel, upNext, type Channel, type Title } from '@/lib/catalog'
 import { api } from '@/lib/api'
 import type { Bumper, HistoryEntry } from '@/lib/types'
-import { YouTubeClip } from './Player'
+import { preconnectYouTube, YouTubeClip } from './Player'
 import { cssVars, Footer, Navbar, PosterArt, timeAgo } from '@/components/ui'
 import { Billboard, ChannelTile, OnNowRow, posLabel, Row, TitleCard, useBrowse } from '@/components/Browse'
 import { FloatingLogo } from '@/components/FloatingLogo'
+import { ClientOnly, useNow } from '@/components/Providers'
 import { ChevronDown, ChevronLeft, ChevronRight, Close, Info, Mute, Play, Search as SearchIcon, Volume } from '@/components/icons'
 
 const HEADINGS: Record<string, string> = { tv: 'TV Shows', movie: 'Films', new: 'New & Popular' }
@@ -25,7 +26,7 @@ export function BrowsePage({ type }: { type?: string }) {
   if (!top.length) return <Grid heading={type ? HEADINGS[type] : ''} items={[]} empty="Nothing here yet. Add shows in the admin panel to fill this section." />
   // The Top 10's first five take turns in the billboard, starting from a different one each day.
   const featured = top.slice(0, 5).map((t, k) => ({ t, rank: rows.some(r => r.top10) ? k + 1 : undefined }))
-  const firstSlide = new Date().getDate() % featured.length
+  const firstSlide = Number(dayKey().slice(8)) % featured.length
 
   return (
     <div className="page">
@@ -119,7 +120,7 @@ export function HistoryPage() {
                 const t = cat.byId[r.titleId]
                 return (
                   <li key={`${r.titleId}-${r.playedAt}-${i}`} className="history-row">
-                    <button className="history-art" onClick={() => openInfo(t)}><PosterArt t={t} /></button>
+                    <button className="history-art" onClick={() => openInfo(t)}><PosterArt t={t} sizes="200px" /></button>
                     <button className="history-main" onClick={() => openInfo(t)}>
                       <b>{t.name}</b>
                       <small>{[r.season && r.episode ? posLabel({ season: r.season, episode: r.episode }) : null, new Date(r.playedAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }), timeAgo(r.playedAt)].filter(Boolean).join(' · ')}</small>
@@ -139,6 +140,7 @@ export function HistoryPage() {
 
 export function ChannelsPage() {
   const cat = useCatalog()
+  const now = useNow()
   return (
     <div className="page">
       <Navbar />
@@ -147,12 +149,12 @@ export function ChannelsPage() {
         <p className="muted lead">Kids TV the way you remember it. Shows play back-to-back, live.</p>
         <div className="channel-grid">
           {cat.channels.map(c => {
-            const np = nowPlaying(cat, c.id)
+            const np = now && nowPlaying(cat, c.id, now)
             return (
               <div key={c.id} className="channel-cell">
                 <ChannelTile c={c} big />
-                <div className="now"><span className="live-pill"><i />NOW</span><b>{np.current.name}</b></div>
-                <div className="next muted">Next: {np.next.name}</div>
+                <div className="now"><span className="live-pill"><i />NOW</span><b>{np ? np.current.name : '\u00a0'}</b></div>
+                <div className="next muted">{np ? `Next: ${np.next.name}` : '\u00a0'}</div>
               </div>
             )
           })}
@@ -178,14 +180,13 @@ export function ChannelPage({ id }: { id: string }) {
     const t = setTimeout(() => setCompact(true), 4000)
     return () => clearTimeout(t)
   }, [id])
-  // Re-render every half minute so "on now" and "up next" follow the clock.
-  const [now, setNow] = useState(() => new Date())
-  useEffect(() => { const h = setInterval(() => setNow(new Date()), 30000); return () => clearInterval(h) }, [])
+  // "On now" and "up next" follow the viewer's clock, every half minute (filled in once the page is in the browser).
+  const now = useNow()
+  const [showSchedule, setShowSchedule] = useState(false)
   if (!c) return <Grid heading="Channel not found" items={[]} empty="" />
   const list = channelTitles(cat, id)
-  const np = upNext(cat, id, 3, now)
-  const block = blockAt(c, now.getHours() * 60 + now.getMinutes())
-  const [showSchedule, setShowSchedule] = useState(false)
+  const np = now && upNext(cat, id, 3, now)
+  const block = now && blockAt(c, now.getHours() * 60 + now.getMinutes())
   const shows = list.filter(t => t.type !== 'movie')
   const movies = list.filter(t => t.type === 'movie')
   // Ranked on the server (admin picks, then most watched); only shows this profile may browse.
@@ -207,12 +208,12 @@ export function ChannelPage({ id }: { id: string }) {
             : <h1 className="channel-name huge" style={{ color: c.accent, textShadow: `5px 5px 0 ${c.accent2}` }}>{c.name}</h1>}
           <div className="now-box">
             <span className="live-pill"><i />LIVE NOW</span>
-            <h2>{np.current.name}</h2>
+            <h2>{np ? np.current.name : '\u00a0'}</h2>
             <p className="now-meta">
-              {np.endsAt && <>Until {timeLabel(np.endsAt)}</>}
+              {np?.endsAt && <>Until {timeLabel(np.endsAt)}</>}
               {block && <> · {clockLabel(block.start)} – {clockLabel(block.end)} block</>}
             </p>
-            {np.next.length > 0 && (
+            {np && np.next.length > 0 && (
               <ol className="up-next">
                 {np.next.map(n => (
                   <li key={n.start.getTime()}>
@@ -226,7 +227,7 @@ export function ChannelPage({ id }: { id: string }) {
           </div>
           <div className="btns">
             <button className="btn white" onClick={() => router.push(`/live/${id}`)}><Play size={26} /> Watch Live</button>
-            <button className="btn grey" onClick={() => openInfo(np.current)}><Info size={26} /> Show Info</button>
+            <button className="btn grey" disabled={!np} onClick={() => np && openInfo(np.current)}><Info size={26} /> Show Info</button>
           </div>
         </div>
       </section>
@@ -237,8 +238,9 @@ export function ChannelPage({ id }: { id: string }) {
         <Row title={`All on ${c.name}`} items={shows} viewAll={`/channel/${id}/all`} />
         {movies.length > 0 && <Row title="Movies" items={movies} />}
       </div>
-      {showSchedule && <ScheduleModal c={c} now={now} onClose={() => setShowSchedule(false)} />}
-      <FloatingLogo c={c} />
+      {showSchedule && now && <ScheduleModal c={c} now={now} onClose={() => setShowSchedule(false)} />}
+      {/* Placed from the window size and saved settings, so it only renders in the browser. */}
+      <ClientOnly><FloatingLogo c={c} /></ClientOnly>
       <Footer />
     </div>
   )
@@ -362,7 +364,7 @@ function ListView({ items }: { items: Title[] }) {
       {items.map((t, i) => (
         <li key={t.id} onClick={() => openTitle(t)}>
           <span className="lv-n">{i + 1}</span>
-          <div className="lv-art"><PosterArt t={t} bare /></div>
+          <div className="lv-art"><PosterArt t={t} bare sizes="160px" /></div>
           <div className="lv-text">
             <b>{t.name}</b>
             <span className="muted">{[t.year, t.type === 'movie' ? 'Film' : 'Series', t.maturity].filter(Boolean).join(' · ')}</span>
@@ -383,11 +385,23 @@ const ListIcon = () => <svg width="20" height="20" viewBox="0 0 24 24" fill="cur
 const MUTE_KEY = 'sf_bumper_muted'
 const readMuted = () => { try { return localStorage.getItem(MUTE_KEY) === '1' } catch { return false } }
 
+// The bumper is picked in the browser (it's random) and its still shows straight away; the YouTube
+// player, a large download, loads once the rest of the page has.
 function HeroBumper({ c }: { c: Channel }) {
-  const [bumper, setBumper] = useState<Bumper | null>(() => randomBumper(c))
-  const [muted, setMutedState] = useState(readMuted)
-  useEffect(() => { setBumper(randomBumper(c)) }, [c.id])
+  const [bumper, setBumper] = useState<Bumper | null>(null)
+  const [muted, setMutedState] = useState(false)
+  const [load, setLoad] = useState(false)
+  useEffect(() => {
+    setMutedState(readMuted())
+    setBumper(randomBumper(c))
+    setLoad(false)
+    const start = () => setLoad(true)
+    if (!('requestIdleCallback' in window)) { const h = setTimeout(start, 1000); return () => clearTimeout(h) }
+    const h = requestIdleCallback(start, { timeout: 2500 })
+    return () => cancelIdleCallback(h)
+  }, [c.id])
   if (!bumper) return null
+  preconnectYouTube()
   const loop = c.bumpers.length === 1
   const next = () => setBumper(prev => randomBumper(c, prev))
   const setMuted = (m: boolean) => { setMutedState(m); try { localStorage.setItem(MUTE_KEY, m ? '1' : '0') } catch {} }
@@ -397,7 +411,9 @@ function HeroBumper({ c }: { c: Channel }) {
   return (
     <>
       <div className="hero-bumper" aria-hidden="true">
-        <YouTubeClip key={bumper.ytId} videoId={bumper.ytId} muted={muted} loop={loop} onEnded={next} onAutoMuted={autoMuted} />
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img className="hero-bumper-still" src={`https://i.ytimg.com/vi/${bumper.ytId}/hqdefault.jpg`} alt="" />
+        {load && <YouTubeClip key={bumper.ytId} videoId={bumper.ytId} muted={muted} loop={loop} onEnded={next} onAutoMuted={autoMuted} />}
         <div className="hero-bumper-shade" />
       </div>
       <button className="round-outline hero-mute" onClick={() => setMuted(!muted)} aria-label={muted ? 'Unmute bumper' : 'Mute bumper'}>
