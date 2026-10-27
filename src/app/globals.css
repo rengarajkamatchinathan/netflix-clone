@@ -72,7 +72,9 @@ ul { list-style: none; }
 /* ============ Navbar ============ */
 .nav { position: fixed; top: 0; left: 0; right: 0; z-index: 50; display: flex; align-items: center; height: 68px; padding: 0 var(--gutter); background-image: linear-gradient(180deg, rgba(0, 0, 0, .7) 10%, transparent); transition: background-color .4s; }
 .nav.solid { background-color: var(--bg); }
-.nav-logo { margin-right: 25px; display: flex; }
+.nav-logo { margin-right: 25px; display: flex; flex-direction: column; align-items: flex-end; }
+/* Build version, small under the logo's right edge. */
+.nav-version { margin-top: 3px; font-size: 10px; font-weight: 500; line-height: 1; letter-spacing: .06em; color: rgba(255, 255, 255, .5); white-space: nowrap; }
 .nav-links { display: flex; align-items: center; }
 .nav-links a { margin-left: 20px; font-size: 14px; color: var(--text-2); transition: color .4s; }
 .nav-links a:hover { color: #b3b3b3; }

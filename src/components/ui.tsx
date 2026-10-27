@@ -18,6 +18,15 @@ export function Logo({ size = 32 }: { size?: number }) {
   return <span className="logo" style={{ fontSize: size }}>STREAMFLIX</span>
 }
 
+// Which build this is (set in next.config.ts): the package.json version. Hover for the commit and build date.
+// (Each value is read as process.env.NAME in full: that is what the build replaces with the value.)
+function VersionTag() {
+  const version = process.env.APP_VERSION, commit = process.env.APP_COMMIT, env = process.env.APP_ENV, builtAt = process.env.APP_BUILT_AT
+  if (!version) return null
+  const details = [`StreamFlix v${version}`, commit && `commit ${commit}`, env, builtAt && `built ${builtAt.slice(0, 10)}`].filter(Boolean).join(' · ')
+  return <span className="nav-version" title={details}>v{version}</span>
+}
+
 // Width of a row card at each of the row breakpoints (see .slider --per), so the browser picks a
 // copy of the image no bigger than the card.
 export const CARD_SIZES = '(max-width: 500px) 50vw, (max-width: 800px) 40vw, (max-width: 1100px) 25vw, (max-width: 1400px) 20vw, 17vw'
@@ -145,7 +154,7 @@ export function Navbar() {
 
   return (
     <header className={`nav ${solid ? 'solid' : ''}`}>
-      <Link href="/browse" className="nav-logo"><Logo size={30} /></Link>
+      <Link href="/browse" className="nav-logo"><Logo size={30} /><VersionTag /></Link>
       <HoverMenu className="nav-browse" trigger={<span className="browse-trigger">{current} <ChevronDown size={14} /></span>}>
         <NavLinks />
       </HoverMenu>
@@ -194,8 +203,9 @@ function NotificationBell() {
   if (!profile) return null
 
   const visible = new Set(cat.titles.map(t => t.id))
-  const shown = items.filter(n =>
-    (!n.titleId || visible.has(n.titleId)) && (!n.channelId || cat.channelById[n.channelId]) &&
+  const canOpen = (n: AppNotification) => (!n.titleId || visible.has(n.titleId)) && (!n.channelId || !!cat.channelById[n.channelId])
+  // Announcements reach every grown-up profile even when they point at a show that isn't out yet ("coming soon").
+  const shown = items.filter(n => (canOpen(n) || (n.kind === 'announcement' && !profile.isKids)) &&
     (n.kind !== 'episodes' || profile.list.includes(n.titleId!) || profile.recent.includes(n.titleId!))).slice(0, 12)
   const unread = shown.filter(n => n.createdAt > profile.notifSeenAt).length
   const isNew = (n: AppNotification) => n.createdAt > (readBefore ?? profile.notifSeenAt)
@@ -203,7 +213,7 @@ function NotificationBell() {
   const go = (n: AppNotification) => {
     const t = n.titleId ? cat.byId[n.titleId] : null
     if (t && browse) browse.openInfo(t)
-    else if (n.channelId) router.push(`/channel/${n.channelId}`)
+    else if (n.channelId && cat.channelById[n.channelId]) router.push(`/channel/${n.channelId}`)
     else if (t) router.push('/browse')
   }
   const art = (n: AppNotification) => {
