@@ -42,9 +42,12 @@ export const tempPassword = () => `${WORDS[randomInt(WORDS.length)]}-${randomInt
 
 // ---------- Channels ----------
 
-export interface ChannelRow { id: string; name: string; tagline: string; sort_order: number; colors: ChannelColors; bumpers: string[]; hidden: boolean; schedule: ScheduleBlock[]; logo_updated_at: Date | null }
+export interface ChannelRow {
+  id: string; name: string; tagline: string; sort_order: number; colors: ChannelColors; bumpers: string[]; hidden: boolean; schedule: ScheduleBlock[]
+  top10: string[]; logo_updated_at: Date | null
+}
 // Every channel column except the logo bytes.
-export const CHANNEL_COLS = 'id, name, tagline, sort_order, colors, bumpers, hidden, schedule, logo_updated_at'
+export const CHANNEL_COLS = 'id, name, tagline, sort_order, colors, bumpers, hidden, schedule, top10, logo_updated_at'
 
 const hhmm = (m: number) => `${String(Math.floor(m / 60) % 24).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`
 
@@ -79,7 +82,15 @@ export function channelFields(b: Record<string, any>, current: Partial<ChannelRo
     bumpers,
     hidden: b.hidden === undefined ? !!current.hidden : !!b.hidden,
     schedule: b.schedule === undefined ? current.schedule ?? [] : scheduleField(b.schedule),
+    top10: b.top10 === undefined ? current.top10 ?? [] : top10Field(b.top10),
   }
+}
+
+// Admin's Top 10 picks: distinct title ids in rank order. Shows later taken off the channel are skipped when shown.
+function top10Field(v: unknown): string[] {
+  const ids = [...new Set((Array.isArray(v) ? v : []).map(String).filter(Boolean))]
+  if (ids.length > 10) fail(400, 'Pick up to 10 shows for the Top 10.')
+  return ids
 }
 
 export async function getChannel(id: string) {
@@ -87,7 +98,8 @@ export async function getChannel(id: string) {
 }
 
 export const channelOut = (c: ChannelRow) => ({
-  id: c.id, name: c.name, tagline: c.tagline, order: c.sort_order, colors: c.colors, bumpers: c.bumpers, hidden: c.hidden, schedule: c.schedule, image: logoUrl(c.id, c.logo_updated_at),
+  id: c.id, name: c.name, tagline: c.tagline, order: c.sort_order, colors: c.colors, bumpers: c.bumpers, hidden: c.hidden, schedule: c.schedule, top10: c.top10 ?? [],
+  image: logoUrl(c.id, c.logo_updated_at),
 })
 
 // ---------- Shows (titles) ----------

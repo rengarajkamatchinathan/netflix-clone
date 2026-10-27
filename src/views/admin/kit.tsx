@@ -63,10 +63,11 @@ interface ModalProps {
   dirty?: boolean
   narrow?: boolean
   wide?: boolean
+  headerExtra?: ReactNode // controls next to the title, e.g. a picker to switch records
 }
 
 // Closing a modal with unsaved changes (dirty) asks first.
-export function Modal({ title, onClose, children, footer, tabs, tab, onTab, dirty = false, narrow = false, wide = false }: ModalProps) {
+export function Modal({ title, onClose, children, footer, tabs, tab, onTab, dirty = false, narrow = false, wide = false, headerExtra }: ModalProps) {
   const [confirming, setConfirming] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
   const tryClose = () => (dirty ? setConfirming(true) : onClose())
@@ -89,7 +90,7 @@ export function Modal({ title, onClose, children, footer, tabs, tab, onTab, dirt
   return createPortal(
     <div className="adm-scrim" onMouseDown={e => { if (e.target === e.currentTarget) tryClose() }}>
       <div className={`adm-modal ${narrow ? 'narrow' : ''} ${wide ? 'wide' : ''}`} role="dialog" aria-modal="true" aria-label={title} tabIndex={-1} ref={ref}>
-        <div className="adm-mhead"><h2>{title}</h2><button className="adm-icon" aria-label="Close" onClick={tryClose}><Close size={18} /></button></div>
+        <div className="adm-mhead"><h2>{title}</h2>{headerExtra}<button className="adm-icon" aria-label="Close" onClick={tryClose}><Close size={18} /></button></div>
         {tabs && (
           <div className="adm-mtabs" role="tablist">
             {tabs.map(([key, label]) => <button key={key} role="tab" aria-selected={tab === key} className={tab === key ? 'on' : ''} onClick={() => onTab?.(key)}>{label}</button>)}

@@ -11,6 +11,14 @@ export const toVideos = (list: unknown): Video[] => (Array.isArray(list) ? list 
     : { url: String(v?.url ?? '').trim(), title: typeof v?.title === 'string' && v.title.trim() ? v.title.trim() : null }))
   .filter(v => v.url)
 
+// A channel's Top 10: the admin's picks in their order, then the most-watched line-up shows this week
+// (viewers = profiles that played it in the last 7 days), then the rest of the line-up in play order.
+export function channelTop10(picks: string[], lineup: string[], viewers: Record<string, number>): string[] {
+  const on = new Set(lineup)
+  const watched = lineup.filter(id => viewers[id] > 0).sort((a, b) => viewers[b] - viewers[a]) // ties keep line-up order
+  return [...new Set([...picks.filter(id => on.has(id)), ...watched, ...lineup])].slice(0, 10)
+}
+
 export const DEFAULT_CROP: ImageCrop = { fit: 'cover', zoom: 1, x: 50, y: 50 }
 
 // A card crop with its numbers clamped and rounded; null when it's the default.

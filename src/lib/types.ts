@@ -51,6 +51,7 @@ export interface RawChannel {
   hidden: boolean
   schedule: ScheduleBlock[]
   titleIds: string[]
+  top10: string[] // ranked title ids: admin picks, then most watched, then line-up order
   image: string | null // uploaded logo, served from /api/channels/<id>/logo
 }
 

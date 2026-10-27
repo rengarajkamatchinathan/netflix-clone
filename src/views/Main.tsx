@@ -197,6 +197,8 @@ export function ChannelPage({ id }: { id: string }) {
   const [showSchedule, setShowSchedule] = useState(false)
   const shows = list.filter(t => t.type !== 'movie')
   const movies = list.filter(t => t.type === 'movie')
+  // Ranked on the server (admin picks, then most watched); only shows this profile may browse.
+  const top10 = c.top10.map(tid => list.find(t => t.id === tid)).filter((t): t is NonNullable<typeof t> => !!t)
   const continuing = profile ? continueWatching(cat, profile, id) : []
   const because = profile && becauseYouWatched(cat, profile, id)
 
@@ -239,7 +241,7 @@ export function ChannelPage({ id }: { id: string }) {
       </section>
       <div className="rows">
         {profile && continuing.length > 0 && <Row title={`Continue Watching for ${profile.name}`} items={continuing} resume />}
-        <Row title={`Top 10 on ${c.name}`} items={shows.slice(0, 10)} top10 />
+        {top10.length > 0 && <Row title={`Top 10 on ${c.name}`} items={top10} top10 />}
         {because && <Row title={`Because You Watched ${because.source.name}`} items={because.items} />}
         <Row title={`All on ${c.name}`} items={shows} viewAll={`/channel/${id}/all`} />
         {movies.length > 0 && <Row title="Movies" items={movies} />}

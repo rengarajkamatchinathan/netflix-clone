@@ -1,3 +1,4 @@
+import { channelTop10 } from '@/lib/ids'
 import { many } from './db'
 import { getSections } from './settings'
 import type { CatalogData, ChannelColors, ImageCrops, ScheduleBlock, Video } from '@/lib/types'
@@ -7,7 +8,14 @@ export const logoUrl = (id: string, updatedAt: Date | string | null) =>
   updatedAt ? `/api/channels/${encodeURIComponent(id)}/logo?v=${new Date(updatedAt).getTime()}` : null
 
 interface ChannelRow {
-  id: string; name: string; tagline: string; sort_order: number; colors: Partial<ChannelColors>; bumpers: string[]; hidden: boolean; schedule: ScheduleBlock[]; logo_updated_at: Date | null
+  id: string; name: string; tagline: string; sort_order: number; colors: Partial<ChannelColors>; bumpers: string[]; hidden: boolean; schedule: ScheduleBlock[]; top10: string[]; logo_updated_at: Date | null
+}
+
+// Profiles that played each title in the last 7 days, for Top 10 rows.
+export async function weeklyViewers(): Promise<Record<string, number>> {
+  const rows = await many<{ title_id: string; n: number }>(`select title_id, count(distinct profile_id)::int as n from play_events
+    where played_at > now() - interval '7 days' group by title_id`)
+  return Object.fromEntries(rows.map(r => [r.title_id, r.n]))
 }
 interface TitleRow {
   id: string; name: string; year: number | null; type: 'tv' | 'movie'; genre: string | null; synopsis: string | null; category: string | null
@@ -18,11 +26,12 @@ interface TitleRow {
 // Visible channels (with their visible shows in play order) and every visible title not tied only to hidden
 // channels or to a switched-off Series/Movies section.
 export async function loadCatalog({ includeHidden = false } = {}): Promise<CatalogData> {
-  const [channels, titles, links, sections] = await Promise.all([
-    many<ChannelRow>(`select id, name, tagline, sort_order, colors, bumpers, hidden, schedule, logo_updated_at from channels ${includeHidden ? '' : 'where not hidden'} order by sort_order, name`),
+  const [channels, titles, links, sections, viewers] = await Promise.all([
+    many<ChannelRow>(`select id, name, tagline, sort_order, colors, bumpers, hidden, schedule, top10, logo_updated_at from channels ${includeHidden ? '' : 'where not hidden'} order by sort_order, name`),
     many<TitleRow>(`select id, name, year, type, genre, synopsis, category, maturity, image, poster, backdrop, crops, link, videos, needs_review from titles ${includeHidden ? '' : 'where not hidden and (publish_at is null or publish_at <= now())'} order by seq`),
     many<{ channel_id: string; title_id: string }>('select ct.channel_id, ct.title_id from channel_titles ct join channels c on c.id = ct.channel_id order by c.sort_order, ct.position, ct.title_id'),
     getSections(),
+    weeklyViewers(),
   ])
   const visible = new Set(channels.map(c => c.id))
   const visibleTitles = new Set(titles.map(t => t.id))
@@ -42,7 +51,7 @@ export async function loadCatalog({ includeHidden = false } = {}): Promise<Catal
   return {
     channels: channels.map(c => ({
       id: c.id, name: c.name, tagline: c.tagline, order: c.sort_order, colors: c.colors, bumpers: c.bumpers, hidden: c.hidden,
-      titleIds: byChannel[c.id] || [], image: logoUrl(c.id, c.logo_updated_at),
+      titleIds: byChannel[c.id] || [], image: logoUrl(c.id, c.logo_updated_at), top10: channelTop10(c.top10 || [], byChannel[c.id] || [], viewers),
       // Blocks only keep shows still on the channel and visible; empty blocks drop out.
       schedule: (c.schedule || []).map(b => ({ ...b, titleIds: b.titleIds.filter(t => byChannel[c.id]?.includes(t)) })).filter(b => b.titleIds.length),
     })),

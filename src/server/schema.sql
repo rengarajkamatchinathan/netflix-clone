@@ -137,6 +137,8 @@ create index if not exists play_events_title_idx on play_events(title_id, played
 -- Daily time blocks per channel: [{ "start": 420, "end": 540, "titleIds": [...] }], minutes from midnight.
 -- Outside every block the channel plays its whole line-up.
 alter table channels add column if not exists schedule jsonb not null default '[]';
+-- Top 10 picked by an admin, in rank order (title ids). Empty places fill with the most-watched shows.
+alter table channels add column if not exists top10 jsonb not null default '[]';
 
 -- What viewers see under the bell. Some are written automatically (new show, new episodes,
 -- channel goes live); announcements are written by an admin.

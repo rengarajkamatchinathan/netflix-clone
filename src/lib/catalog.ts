@@ -47,6 +47,7 @@ export interface Channel {
   accent: string
   accent2: string
   titleIds: string[]
+  top10: string[]
   image: string | null
   bumpers: Bumper[]
   schedule: ScheduleBlock[]
@@ -100,6 +101,7 @@ function toChannel(c: RawChannel): Channel {
     ...DEFAULT_COLORS,
     ...c.colors,
     titleIds: c.titleIds || [],
+    top10: c.top10 || [],
     image: c.image,
     bumpers: (c.bumpers || []).map(youtubeId).filter((id): id is string => !!id).map((ytId): Bumper => ({ kind: 'youtube', ytId })),
     schedule: [...(c.schedule || [])].sort((a, b) => a.start - b.start),

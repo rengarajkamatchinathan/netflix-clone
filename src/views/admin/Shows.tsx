@@ -125,17 +125,48 @@ function CropEditor({ src, label, tall, crop, onChange }: { src: string; label: 
   )
 }
 
-// Edit or create a show. Opens from the Shows page or from a channel's Shows tab.
-export function ShowModal({ id, initial, channels, onClose, onSaved, onDeleted }: {
+// One of the show's images on the Images tab: its link beside its crop editor, in the shape viewers see.
+function ImageSlot({ title, where, empty, link, onLink, status, tall, crop, onCrop }: {
+  title: string; where: string; empty: string; link: string; onLink: (v: string) => void; status: ImageStatusValue
+  tall?: boolean; crop: ImageCrop; onCrop: (c: ImageCrop) => void
+}) {
+  return (
+    <section className="adm-image-slot">
+      <div className="adm-stack">
+        <div>
+          <h3>{title}</h3>
+          <p className="adm-muted small">{where}</p>
+        </div>
+        <div>
+          <TextField label="Image link" value={link} onChange={onLink} placeholder="https://…" aria-label={`${title} link`} />
+          <ImageStatus status={status} />
+        </div>
+      </div>
+      <div className="adm-slot-art">
+        {link.trim() && status === 'ok'
+          ? <CropEditor src={link.trim()} label={title} tall={tall} crop={crop} onChange={onCrop} />
+          : <div className={`adm-slot-empty ${tall ? 'tall' : ''}`}>{status === 'checking' ? 'Checking image…' : status === 'broken' ? 'Image doesn’t load' : empty}</div>}
+      </div>
+    </section>
+  )
+}
+
+// Edit or create a show. Opens from the Shows page or from a channel's Shows tab. Stays open after
+// saving; the picker in the header (shows) switches to another show, reported through onSwitch.
+export function ShowModal({ id: openId, initial, channels, shows = [], showsLabel, onClose, onSaved, onDeleted, onSwitch }: {
   id: string | null
   initial?: Partial<ShowForm>
   channels: { id: string; name: string }[]
+  shows?: { id: string; name: string }[]
+  showsLabel?: string // what the picker's shows have in common, e.g. their channel
   onClose: () => void
   onSaved?: (t: TitleDetail) => void
   onDeleted?: (id: string) => void
+  onSwitch?: (id: string) => void
 }) {
   const toast = useToast()
   const reloadCatalog = useReloadCatalog()
+  const [id, setId] = useState(openId)
   const [form, setForm] = useState<ShowForm | null>(null)
   const [saved, setSaved] = useState<ShowForm | null>(null) // last saved form, to tell if anything changed
   const [impact, setImpact] = useState<TitleDetail['impact'] | null>(null)
@@ -144,12 +175,19 @@ export function ShowModal({ id, initial, channels, onClose, onSaved, onDeleted }
   const [busy, setBusy] = useState(false)
   const [deleting, setDeleting] = useState(false)
 
+  const [loading, setLoading] = useState(false) // switching shows: the previous one stays on screen, locked
+  useEffect(() => setId(openId), [openId]) // e.g. browser back/forward on the Shows page
+
   useEffect(() => {
     if (!id) { const f = { ...EMPTY, ...initial, videos: [] }; setForm(f); setSaved(f); return }
+    let live = true
+    setLoading(true)
     api<TitleDetail>(`/admin/titles/${encodeURIComponent(id)}`).then(t => {
+      if (!live) return
       const f = toForm(t)
       setForm(f); setSaved(f); setImpact(t.impact)
-    }, e => setErr(errorMessage(e)))
+    }, e => live && setErr(errorMessage(e))).finally(() => live && setLoading(false))
+    return () => { live = false }
   }, [id])
 
   const imageStatus = useImageStatus(form?.image.trim())
@@ -161,7 +199,6 @@ export function ShowModal({ id, initial, channels, onClose, onSaved, onDeleted }
   const setCrop = (k: ImageKind) => (c: ImageCrop) => setForm(f => f && { ...f, crops: { ...f.crops, [k]: c } })
   const dirty = JSON.stringify(form) !== JSON.stringify(saved)
   const chName = (c: string) => channels.find(x => x.id === c)?.name || c
-  const name = form.name.trim() || 'New show'
 
   const save = async () => {
     if (!form.name.trim()) { setTab('details'); return setErr('Enter a title.') }
@@ -177,27 +214,53 @@ export function ShowModal({ id, initial, channels, onClose, onSaved, onDeleted }
       await reloadCatalog()
       toast(`${t.name} saved`)
       onSaved?.(t)
-      onClose()
-    } catch (e) { setErr(errorMessage(e)); setBusy(false) }
+      // Stay open on the saved show; a new show becomes an edit of itself.
+      const f = toForm(t)
+      setForm(f); setSaved(f); setImpact(t.impact)
+      if (!id) { setId(t.id); onSwitch?.(t.id) }
+    } catch (e) { setErr(errorMessage(e)) }
+    setBusy(false)
+  }
+
+  // Switching shows drops unsaved changes, so it asks first.
+  const others = id && !shows.some(s => s.id === id) ? [{ id, name: saved.name }, ...shows] : shows
+  const at = others.findIndex(s => s.id === id)
+  const switchTo = (next: string | undefined) => {
+    if (!next || next === id) return
+    if (dirty && !window.confirm('Discard your unsaved changes to this show?')) return
+    setErr(''); setId(next); onSwitch?.(next)
   }
 
   const setVideo = (key: number, patch: Partial<EpisodeRow>) => set({ videos: form.videos.map(v => (v.key === key ? { ...v, ...patch } : v)) })
   const unassigned = channels.filter(c => !form.channels.includes(c.id))
+  const brokenImages = [imageStatus, posterStatus, backdropStatus].filter(s => s === 'broken').length
 
   return (
     <>
       <Modal title={id ? `Edit show · ${saved.name}` : 'New show'} onClose={onClose} dirty={dirty} wide
-        tabs={[['details', 'Details'], ['episodes', `Episodes (${form.videos.length})`]]} tab={tab} onTab={setTab}
+        headerExtra={id && others.length > 1 && (
+          <div className="adm-show-picker">
+            <button type="button" className="adm-icon" aria-label="Previous show" disabled={at <= 0} onClick={() => switchTo(others[at - 1]?.id)}>‹</button>
+            <select value={id} aria-label={showsLabel ? `Switch to another show on ${showsLabel}` : 'Switch show'} onChange={e => switchTo(e.target.value)}>
+              <optgroup label={showsLabel ? `${showsLabel} · ${others.length} shows` : `${others.length} shows`}>
+                {others.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+              </optgroup>
+            </select>
+            <button type="button" className="adm-icon" aria-label="Next show" disabled={at >= others.length - 1} onClick={() => switchTo(others[at + 1]?.id)}>›</button>
+          </div>
+        )}
+        tabs={[['details', 'Details'], ['images', brokenImages ? `Images (${brokenImages} broken)` : 'Images'], ['episodes', `Episodes (${form.videos.length})`]]} tab={tab} onTab={setTab}
         footer={<>
           {id && <button className="adm-btn danger" onClick={() => setDeleting(true)}><Trash size={16} /> Delete show</button>}
           <span className="grow" />
           <button className="adm-btn" onClick={onClose}>Cancel</button>
-          <button className="adm-btn primary" disabled={busy || (!!id && !dirty)} onClick={save}>{busy ? 'Saving…' : id ? 'Save show' : 'Create show'}</button>
+          <button className="adm-btn primary" disabled={busy || loading || (!!id && !dirty)} onClick={save}>{busy ? 'Saving…' : loading ? 'Loading…' : id ? 'Save show' : 'Create show'}</button>
         </>}>
         {err && <div className="adm-error">{err}</div>}
+        <div className={`adm-stack ${loading ? 'adm-loading' : ''}`} inert={loading}>
         {tab === 'details' ? (
-          <div className="adm-cols">
-            <div className="adm-stack">
+          <div className="adm-stack">
+              <h3 className="adm-group">About</h3>
               <div className="adm-row2">
                 <TextField label="Title" value={form.name} onChange={v => set({ name: v })} maxLength={200} autoFocus={!id} />
                 <TextField label="Year" value={form.year} onChange={v => set({ year: v.replace(/\D/g, '').slice(0, 4) })} inputMode="numeric" placeholder="2005" />
@@ -207,24 +270,13 @@ export function ShowModal({ id, initial, channels, onClose, onSaved, onDeleted }
                 <TextField label="Genre" value={form.genre} onChange={v => set({ genre: v })} placeholder="Kids" maxLength={40} />
               </div>
               <TextField label="Synopsis" multiline value={form.synopsis} onChange={v => set({ synopsis: v })} maxLength={1000} />
-              <div>
-                <TextField label="Image link (wide, 16:9)" value={form.image} onChange={v => set({ image: v })} placeholder="https://…" />
-                <ImageStatus status={imageStatus} />
-              </div>
-              <div>
-                <TextField label="Poster link (tall, optional)" value={form.poster} onChange={v => set({ poster: v })} placeholder="https://…" />
-                <ImageStatus status={posterStatus} />
-              </div>
-              <div>
-                <TextField label="Background image link (wide, optional)" value={form.backdrop} onChange={v => set({ backdrop: v })} placeholder="https://…"
-                  hint="Shown at the top of the show's info window. Leave empty to use the image above." />
-                <ImageStatus status={backdropStatus} />
-              </div>
-              <TextField label="Info link (opens when the show is clicked)" value={form.link} onChange={v => set({ link: v })} placeholder="https://…" hint="Leave empty to use the built-in player." />
               <div className="adm-row2">
                 <TextField label="Category" value={form.category} onChange={v => set({ category: v })} placeholder="Series" hint="'Series' puts it in the Sitcoms row." maxLength={40} />
                 <TextField label="Age rating" value={form.maturity} onChange={v => set({ maturity: v })} placeholder="U/A 7+" maxLength={20} />
               </div>
+              <TextField label="Info link (opens when the show is clicked)" value={form.link} onChange={v => set({ link: v })} placeholder="https://…" hint="Leave empty to use the built-in player." />
+
+              <h3 className="adm-group">Where it appears</h3>
               <Check label="Shown to viewers" hint="Hidden shows stay saved but don't appear anywhere on the site." checked={!form.hidden} onChange={v => set({ hidden: !v })} />
               <TextField label="Publish on (optional)" type="datetime-local" value={form.publishAt} onChange={v => set({ publishAt: v })}
                 hint={form.publishAt ? `Viewers see it, and get a notification, from ${fmtWhen(new Date(form.publishAt).toISOString())}.` : 'Leave empty to publish as soon as it is saved.'} />
@@ -243,21 +295,18 @@ export function ShowModal({ id, initial, channels, onClose, onSaved, onDeleted }
                 </div>
                 <small>{form.channels.length ? 'New channels add the show to the end of their line-up.' : 'Not on any channel: it only appears in Browse and Search.'}</small>
               </div>
-            </div>
-            <div className="adm-preview">
-              <span className="adm-label">Card</span>
-              {form.image && imageStatus === 'ok'
-                ? <CropEditor src={form.image.trim()} label="Card image" crop={form.crops.image} onChange={setCrop('image')} />
-                : <div className="adm-show-preview"><Thumb t={{ id: form.name, name: form.name }} size="lg" /><span>{name}</span></div>}
-              {form.poster && posterStatus === 'ok' && <>
-                <span className="adm-label">Poster (tall cards)</span>
-                <CropEditor src={form.poster.trim()} label="Poster" tall crop={form.crops.poster} onChange={setCrop('poster')} />
-              </>}
-              {form.backdrop && backdropStatus === 'ok' && <>
-                <span className="adm-label">Info window background</span>
-                <CropEditor src={form.backdrop.trim()} label="Info window background" crop={form.crops.backdrop} onChange={setCrop('backdrop')} />
-              </>}
-            </div>
+          </div>
+        ) : tab === 'images' ? (
+          <div className="adm-stack">
+            <ImageSlot title="Card image" where="Wide 16:9 cards in every row, the hover preview and search. Required for real artwork."
+              empty="No image: cards show generated art with the title." link={form.image} onLink={v => set({ image: v })} status={imageStatus}
+              crop={form.crops.image} onCrop={setCrop('image')} />
+            <ImageSlot title="Poster" tall where="Tall 2:3 cards in the Top 10 rows and on the sign-in pages. Optional."
+              empty="No poster: tall cards use the card image." link={form.poster} onLink={v => set({ poster: v })} status={posterStatus}
+              crop={form.crops.poster} onCrop={setCrop('poster')} />
+            <ImageSlot title="Info window background" where="Top of the show's info window. Optional."
+              empty="No background: the info window uses the card image." link={form.backdrop} onLink={v => set({ backdrop: v })} status={backdropStatus}
+              crop={form.crops.backdrop} onCrop={setCrop('backdrop')} />
           </div>
         ) : (
           <div className="adm-stack">
@@ -275,6 +324,7 @@ export function ShowModal({ id, initial, channels, onClose, onSaved, onDeleted }
             <button type="button" className="adm-btn" onClick={() => set({ videos: [...form.videos, ...withKeys([{ title: '', url: '' }])] })}><Plus size={16} /> Add episode</button>
           </div>
         )}
+        </div>
       </Modal>
       {deleting && id && (
         <ConfirmDelete title={`Delete ${saved.name}?`} expected={saved.name} what="show title" onClose={() => setDeleting(false)}
@@ -377,6 +427,11 @@ export function ShowsPage({ kind = 'all' }: { kind?: keyof typeof KINDS }) {
   }
   const n = picked.length
   const many = `${n} show${n === 1 ? '' : 's'}`
+  // The edit window's picker lists the shows on the same channel as the one being edited: the filtered
+  // channel if the show is on it, else its first channel; shows on no channel list each other.
+  const current = editing ? shows.data.find(t => t.id === editing) : undefined
+  const pickChannel = current && (current.channels.includes(channel) ? channel : current.channels[0])
+  const siblings = current ? shows.data.filter(t => (pickChannel ? t.channels.includes(pickChannel) : !t.channels.length && t.type === current.type)) : []
   const open = (query: string) => router.push(`${pathname}?${query}`, { scroll: false })
   const close = () => router.replace(pathname, { scroll: false })
 
@@ -446,8 +501,10 @@ export function ShowsPage({ kind = 'all' }: { kind?: keyof typeof KINDS }) {
         </ConfirmDelete>
       )}
       {(editing || creating) && (
-        <ShowModal key={editing || 'new'} id={editing} initial={type && { type }} channels={chans.data} onClose={close}
-          onSaved={() => shows.reload()} onDeleted={() => shows.reload()} />
+        <ShowModal id={editing} initial={type && { type }} channels={chans.data} shows={siblings}
+          showsLabel={current ? (pickChannel ? chName(pickChannel) : 'Not on any channel') : undefined} onClose={close}
+          onSaved={() => shows.reload()} onDeleted={() => shows.reload()}
+          onSwitch={sid => router.replace(`${pathname}?edit=${encodeURIComponent(sid)}`, { scroll: false })} />
       )}
     </div>
   )

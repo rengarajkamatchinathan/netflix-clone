@@ -137,6 +137,9 @@ a.adm-tile:hover { border-color: #555; }
 .adm-sortable { display: flex; flex-direction: column; gap: 4px; }
 .adm-sortable > li { display: flex; align-items: center; gap: 8px; background: var(--panel-2); border: 1px solid transparent; border-radius: 4px; padding: 6px 8px; }
 .adm-sortable > li.dragging { opacity: .4; }
+/* Top 10 places that fill themselves: like sortable rows, but dashed and not draggable */
+.adm-top10-auto { display: flex; flex-direction: column; gap: 4px; }
+.adm-top10-auto > li { display: flex; align-items: center; gap: 10px; border: 1px dashed #3a3a3e; border-radius: 4px; padding: 6px 8px 6px 32px; }
 .adm-sortable > li.over { border-color: #fff; }
 .adm-grip { color: var(--dim); cursor: grab; display: grid; place-items: center; flex: none; }
 .adm-grip:active { cursor: grabbing; }
@@ -213,14 +216,24 @@ body.adm-modal-open { overflow: hidden; }
 .adm-danger { background: #24100f; border: 1px solid #5c1215; border-radius: 4px; padding: 12px; display: flex; flex-direction: column; gap: 4px; color: var(--text-2); }
 .adm-danger b { color: #ff8a92; }
 .adm-cols { display: grid; grid-template-columns: minmax(0, 1fr) 240px; gap: 20px; }
-.adm-preview { display: flex; flex-direction: column; gap: 8px; }
-.adm-show-preview { position: relative; border-radius: 4px; overflow: hidden; aspect-ratio: 16 / 9; max-width: 100%; }
-.adm-show-preview img, .adm-show-preview .adm-thumb { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
-.adm-show-preview span { position: absolute; left: 0; right: 0; bottom: 0; padding: 24px 10px 8px; background: linear-gradient(transparent, rgba(0, 0, 0, .85)); font-family: var(--display); font-size: 22px; line-height: 1; overflow-wrap: anywhere; }
-.adm-preview .adm-label:not(:first-child) { margin-top: 8px; }
+.adm-preview { display: flex; flex-direction: column; gap: 8px; position: sticky; top: 0; align-self: start; }
+.adm-show-picker { display: flex; align-items: center; gap: 2px; min-width: 0; }
+.adm-show-picker select { max-width: 220px; height: 32px; background: #141416; border: 1px solid #3a3a3e; border-radius: 4px; padding: 0 8px; color: var(--text); }
+.adm-show-picker .adm-icon { font-size: 20px; line-height: 1; }
+.adm-show-picker .adm-icon:disabled { opacity: .3; cursor: default; }
+.adm-loading { opacity: .5; transition: opacity .15s; }
+/* section headings inside a form */
+.adm-group { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); padding-bottom: 6px; border-bottom: 1px solid var(--line); }
+.adm-group:not(:first-child) { margin-top: 10px; }
+/* Images tab: one panel per image, link on the left, the image in its real shape on the right */
+.adm-image-slot { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 20px; padding: 16px; background: #17171a; border: 1px solid var(--line); border-radius: 6px; }
+.adm-image-slot h3 { font-size: 15px; font-weight: 700; margin-bottom: 4px; }
+.adm-slot-art { min-width: 0; }
+.adm-slot-empty { display: grid; place-items: center; aspect-ratio: 16 / 9; padding: 12px; border: 1px dashed #3a3a3e; border-radius: 4px; color: var(--muted); font-size: 13px; text-align: center; }
+.adm-slot-empty.tall, .adm-card-preview.tall { width: 160px; }
+.adm-slot-empty.tall { aspect-ratio: 2 / 3; }
 /* image crop editor (the image itself is drawn by the site's .poster rules) */
 .adm-crop { display: flex; flex-direction: column; gap: 8px; }
-.adm-card-preview.tall { width: 140px; }
 .adm-card-preview .poster.grab { cursor: grab; touch-action: none; user-select: none; }
 .adm-card-preview .poster.grab:active { cursor: grabbing; }
 .adm-card-preview .poster:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
@@ -254,7 +267,11 @@ body.adm-modal-open { overflow: hidden; }
   .adm-side nav, .adm-who { display: none; }
   .adm-side.open nav { display: flex; padding-top: 12px; }
   .adm-cols { grid-template-columns: 1fr; }
-  .adm-preview { order: -1; }
+  .adm-preview { order: -1; position: static; }
+  .adm-image-slot { grid-template-columns: 1fr; }
+  .adm-mhead { flex-wrap: wrap; }
+  .adm-show-picker { order: 3; width: 100%; }
+  .adm-show-picker select { flex: 1; max-width: none; }
   .adm-avatar-edit { flex-direction: column; align-items: center; }
 }
 .adm-section-switch { margin-bottom: 16px; }

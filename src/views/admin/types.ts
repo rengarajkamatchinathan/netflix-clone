@@ -10,11 +10,13 @@ export interface AdminChannel {
   bumpers: string[]
   hidden: boolean
   schedule: ScheduleBlock[]
+  top10: string[] // admin's picks, in rank order
   image: string | null
   shows: number
 }
 
-export interface LineupTitle { id: string; name: string; year: number | null; image: string | null; poster: string | null; episodes: number }
+// viewers: profiles that played it in the last 7 days (only from the channel detail route)
+export interface LineupTitle { id: string; name: string; year: number | null; image: string | null; poster: string | null; episodes: number; viewers?: number }
 
 export interface ChannelDetail extends Omit<AdminChannel, 'shows'> { titles: LineupTitle[] }
 

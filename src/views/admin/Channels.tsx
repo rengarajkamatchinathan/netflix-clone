@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState, type FormEvent } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { api } from '@/lib/api'
-import { slug, youtubeId } from '@/lib/ids'
+import { channelTop10, slug, youtubeId } from '@/lib/ids'
 import type { ChannelColors } from '@/lib/types'
 import { useReloadCatalog } from '@/context/CatalogContext'
 import { Plus, Search, Trash } from '@/components/icons'
@@ -20,7 +20,67 @@ let keySeq = 0
 interface BumperRow { key: number; url: string }
 interface ChannelForm {
   slug: string; slugTouched?: boolean; name: string; tagline: string; hidden: boolean; colors: ChannelColors
-  bumpers: BumperRow[]; lineup: LineupTitle[]; image: string | null; schedule: BlockRow[]
+  bumpers: BumperRow[]; lineup: LineupTitle[]; image: string | null; schedule: BlockRow[]; top10: string[]
+}
+
+const viewersLabel = (n = 0) => (n ? `${n} viewer${n === 1 ? '' : 's'} this week` : 'Line-up order')
+
+// Top 10 tab: the admin's picks in rank order (drag to reorder), then the places that fill themselves,
+// exactly as viewers will see them (see channelTop10).
+function Top10Editor({ name, lineup, picks, onChange }: { name: string; lineup: LineupTitle[]; picks: string[]; onChange: (ids: string[]) => void }) {
+  if (!lineup.length) return <p className="adm-empty">Add shows on the Shows tab first. The Top 10 is picked from this channel&apos;s line-up.</p>
+  const byId = Object.fromEntries(lineup.map(t => [t.id, t]))
+  const picked = picks.filter(id => byId[id])
+  const ranked = channelTop10(picked, lineup.map(t => t.id), Object.fromEntries(lineup.map(t => [t.id, t.viewers || 0])))
+  const auto = ranked.slice(picked.length)
+  const unpicked = lineup.filter(t => !picked.includes(t.id))
+  return (
+    <div className="adm-stack">
+      <p className="adm-muted">
+        Choose the shows in &ldquo;Top 10 on {name || 'this channel'}&rdquo;, in rank order. Any places you leave empty fill themselves:
+        the shows most watched this week first, then the line-up order.
+      </p>
+      <div className="adm-actions">
+        {picked.length < 10 && unpicked.length > 0 && (
+          <select className="adm-chip-add" value="" aria-label="Add a show to the Top 10" onChange={e => { if (e.target.value) onChange([...picked, e.target.value]) }}>
+            <option value="">+ Add show at #{picked.length + 1}</option>
+            {unpicked.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+          </select>
+        )}
+        <span className="grow" />
+        {picked.length > 0 && <button type="button" className="adm-link" onClick={() => onChange([])}>Clear picks</button>}
+      </div>
+      {picked.length > 0 && <>
+        <span className="adm-label">Picked ({picked.length})</span>
+        <SortableList items={picked.map(id => byId[id])} getKey={t => t.id} onChange={l => onChange(l.map(t => t.id))} render={(t, i) => (
+          <div className="adm-lineup-row">
+            <span className="adm-num">{i + 1}</span>
+            <Thumb t={t} />
+            <span className="adm-show-main"><b>{t.name}</b><small>Picked · {t.viewers ? viewersLabel(t.viewers) : 'no viewers this week'}</small></span>
+            <button type="button" className="adm-btn small" onClick={() => onChange(picked.filter(x => x !== t.id))}>Remove</button>
+          </div>
+        )} />
+      </>}
+      {auto.length > 0 && <>
+        <span className="adm-label">Filled automatically</span>
+        <ol className="adm-top10-auto">
+          {auto.map((tid, i) => {
+            const t = byId[tid]
+            return (
+              <li key={tid}>
+                <span className="adm-num">{picked.length + i + 1}</span>
+                <Thumb t={t} />
+                <span className="adm-show-main"><b>{t.name}</b><small>{viewersLabel(t.viewers)}</small></span>
+                {/* Pinning keeps every place down to this one exactly as it is now. */}
+                <button type="button" className="adm-btn small" title={`Keep places ${picked.length + 1}–${picked.length + i + 1} as they are`}
+                  onClick={() => onChange([...picked, ...auto.slice(0, i + 1)])}>Pin</button>
+              </li>
+            )
+          })}
+        </ol>
+      </>}
+    </div>
+  )
 }
 // A logo picked but not saved yet, or a saved logo marked for removal.
 type PendingLogo = { file: File; preview: string } | 'remove' | null
@@ -62,7 +122,7 @@ function ChannelModal({ id, shows, channels, onClose, onChanged }: {
 
   useEffect(() => {
     if (!id) {
-      const f: ChannelForm = { slug: '', name: '', tagline: '', hidden: false, colors: DEFAULT_COLORS, bumpers: [], lineup: [], image: null, schedule: [] }
+      const f: ChannelForm = { slug: '', name: '', tagline: '', hidden: false, colors: DEFAULT_COLORS, bumpers: [], lineup: [], image: null, schedule: [], top10: [] }
       setForm(f); setSaved(f); return
     }
     api<ChannelDetail>(`/admin/channels/${id}`).then(c => {
@@ -70,6 +130,7 @@ function ChannelModal({ id, shows, channels, onClose, onChanged }: {
         slug: c.id, name: c.name, tagline: c.tagline, hidden: c.hidden, colors: { ...DEFAULT_COLORS, ...c.colors },
         bumpers: c.bumpers.map(url => ({ key: ++keySeq, url })), lineup: c.titles, image: c.image,
         schedule: (c.schedule || []).map(b => ({ key: ++keySeq, start: toTime(b.start), end: toTime(b.end), titleIds: b.titleIds })),
+        top10: c.top10 || [],
       }
       setForm(f); setSaved(f)
     }, e => setErr(errorMessage(e)))
@@ -85,7 +146,9 @@ function ChannelModal({ id, shows, channels, onClose, onChanged }: {
   if (!form || !saved) return <Modal title="Loading channel…" onClose={onClose}><Loading error={err} /></Modal>
 
   const set = (patch: Partial<ChannelForm>) => setForm(f => f && { ...f, ...patch })
-  const details = (f: ChannelForm) => JSON.stringify([f.slug, f.name, f.tagline, f.hidden, f.colors, f.bumpers.map(b => b.url), f.schedule.map(b => [b.start, b.end, b.titleIds])])
+  // Top 10 picks only count while the show is still in the line-up.
+  const top10Of = (f: ChannelForm) => f.top10.filter(t => f.lineup.some(x => x.id === t))
+  const details = (f: ChannelForm) => JSON.stringify([f.slug, f.name, f.tagline, f.hidden, f.colors, f.bumpers.map(b => b.url), f.schedule.map(b => [b.start, b.end, b.titleIds]), top10Of(f)])
   const lineupIds = (f: ChannelForm) => JSON.stringify(f.lineup.map(t => t.id))
   const detailsChanged = details(form) !== details(saved)
   const lineupChanged = lineupIds(form) !== lineupIds(saved)
@@ -122,6 +185,7 @@ function ChannelModal({ id, shows, channels, onClose, onChanged }: {
     const body = {
       name: form.name, tagline: form.tagline, hidden: form.hidden, colors: form.colors, bumpers: form.bumpers.map(b => b.url),
       schedule: blocks.map(b => ({ start: toMin(b.start), end: toEndMin(b.end), titleIds: b.titleIds })),
+      top10: top10Of(form),
     }
     try {
       let cid = id
@@ -155,7 +219,7 @@ function ChannelModal({ id, shows, channels, onClose, onChanged }: {
   return (
     <>
       <Modal title={id ? `Edit channel · ${saved.name}` : 'New channel'} onClose={onClose} dirty={dirty} wide
-        tabs={[['details', 'Details'], ['shows', `Shows (${form.lineup.length})`], ['schedule', `Schedule (${form.schedule.length})`], ['bumpers', `Bumpers (${form.bumpers.length})`]]}
+        tabs={[['details', 'Details'], ['shows', `Shows (${form.lineup.length})`], ['top10', 'Top 10'], ['schedule', `Schedule (${form.schedule.length})`], ['bumpers', `Bumpers (${form.bumpers.length})`]]}
         tab={tab} onTab={setTab}
         footer={<>
           {id && <button className="adm-btn danger" onClick={() => setDeleting(true)}><Trash size={16} /> Delete channel</button>}
@@ -232,6 +296,8 @@ function ChannelModal({ id, shows, channels, onClose, onChanged }: {
           </div>
         )}
 
+        {tab === 'top10' && <Top10Editor name={form.name.trim()} lineup={form.lineup} picks={form.top10} onChange={top10 => set({ top10 })} />}
+
         {tab === 'schedule' && (
           <ScheduleEditor blocks={blocks} lineup={form.lineup} color={form.colors.accent} onChange={schedule => set({ schedule })} />
         )}
@@ -259,7 +325,7 @@ function ChannelModal({ id, shows, channels, onClose, onChanged }: {
       </Modal>
 
       {editShow && (
-        <ShowModal key={editShow.id || 'new'} id={editShow.id} initial={editShow.initial} channels={channels}
+        <ShowModal key={editShow.id || 'new'} id={editShow.id} initial={editShow.initial} channels={channels} shows={form.lineup} showsLabel={form.name.trim() || undefined}
           onClose={() => setEditShow(null)} onSaved={showSaved} onDeleted={showDeleted} />
       )}
       {deleting && id && (
