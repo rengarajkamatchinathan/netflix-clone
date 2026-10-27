@@ -11,6 +11,7 @@ import type { Bumper, HistoryEntry } from '@/lib/types'
 import { YouTubeClip } from './Player'
 import { cssVars, Footer, Navbar, PosterArt, timeAgo } from '@/components/ui'
 import { Billboard, ChannelStrip, ChannelTile, posLabel, Row, TitleCard, useBrowse } from '@/components/Browse'
+import { FloatingLogo } from '@/components/FloatingLogo'
 import { ChevronDown, ChevronLeft, ChevronRight, Close, Info, Mute, Play, Search as SearchIcon, Volume } from '@/components/icons'
 
 const HEADINGS: Record<string, string> = { tv: 'TV Shows', movie: 'Films', new: 'New & Popular' }
@@ -244,6 +245,7 @@ export function ChannelPage({ id }: { id: string }) {
         {movies.length > 0 && <Row title="Movies" items={movies} />}
       </div>
       {showSchedule && <ScheduleModal c={c} now={now} onClose={() => setShowSchedule(false)} />}
+      <FloatingLogo c={c} />
       <Footer />
     </div>
   )

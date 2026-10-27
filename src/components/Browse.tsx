@@ -9,6 +9,7 @@ import { BrowseCtx, useBrowse, type CardRect, type Origin, type Rect } from '@/c
 import { hash, type Channel, type Title } from '@/lib/catalog'
 import type { WatchPosition } from '@/lib/types'
 import { cssVars, PosterArt } from './ui'
+import { setLogoChannel } from './FloatingLogo'
 import { Check, ChevronDown, ChevronLeft, ChevronRight, Close, Info, Play, Plus, Replay, ThumbUp, Volume } from './icons'
 
 const MOODS = ['Exciting', 'Feel-good', 'Witty', 'Suspenseful', 'Heartfelt', 'Imaginative', 'Quirky', 'Goofy', 'Action-packed']
@@ -24,10 +25,16 @@ export function BrowseProvider({ children }: { children: ReactNode }) {
   const search = useSearchParams().toString()
   const router = useRouter()
   const { profile, recordPlay } = useApp()
+  const { channelById } = useCatalog()
   useEffect(() => { setPreview(null); setInfo(null) }, [pathname, search])
 
   const openInfo = (t: Title, rect: Rect = null) => { setPreview(null); setInfo({ t, rect }) }
-  const openLink = (t: Title) => { setPreview(null); window.open(t.link!, '_blank', 'noopener,noreferrer') }
+  // The floating channel logo (pop-out or extension) switches to the show's channel as it opens.
+  const openLink = (t: Title) => {
+    setPreview(null)
+    if (t.channel && channelById[t.channel]) setLogoChannel(channelById[t.channel])
+    window.open(t.link!, '_blank', 'noopener,noreferrer')
+  }
   // Clicking a title always opens the preview modal; its Play button is what opens the link.
   const openTitle = (t: Title, rect: Rect = null) => openInfo(t, rect)
   // Play: open its link in a new tab if it has one, otherwise the built-in player at the

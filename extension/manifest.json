@@ -1,0 +1,24 @@
+{
+  "manifest_version": 3,
+  "name": "Streamflix Channel Logo",
+  "version": "1.2.0",
+  "description": "While a Streamflix channel page is open, shows that channel's logo over every tab.",
+  "permissions": ["storage"],
+  "background": { "service_worker": "background.js" },
+  "action": { "default_title": "Show or hide the Streamflix logo" },
+  "content_scripts": [
+    {
+      "matches": ["http://localhost/*", "http://127.0.0.1/*"],
+      "js": ["bridge.js"],
+      "run_at": "document_start"
+    },
+    {
+      "matches": ["http://*/*", "https://*/*"],
+      "exclude_matches": ["http://localhost/*", "http://127.0.0.1/*"],
+      "js": ["overlay.js"],
+      "run_at": "document_start",
+      "all_frames": true,
+      "match_origin_as_fallback": true
+    }
+  ]
+}

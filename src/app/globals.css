@@ -821,3 +821,31 @@ img.avatar { object-fit: cover; background: #222; }
 .sched-list button:hover { text-decoration: underline; }
 .sched-block { color: var(--muted); font-size: 12px; }
 @media (max-width: 560px) { .sched-list time { min-width: 0; width: 100%; } }
+
+/* Floating channel logo: drag to move, right-click for options */
+.float-logo { position: fixed; z-index: 90; cursor: grab; touch-action: none; user-select: none; opacity: var(--idle-opacity, .7); transition: opacity .25s; outline-offset: 4px; }
+.float-logo:hover, .float-logo:focus-visible, .float-logo.dragging, .float-logo.resizing { opacity: 1; }
+.float-logo.dragging { cursor: grabbing; }
+.float-logo img { display: block; width: 100%; height: auto; pointer-events: none; filter: drop-shadow(0 4px 12px rgba(0, 0, 0, .6)); }
+.float-logo .channel-name { display: block; line-height: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.float-logo.resizing { outline: 1px dashed rgba(255, 255, 255, .7); }
+.float-logo-handle { position: absolute; width: 12px; height: 12px; background: #fff; border: 2px solid var(--accent, var(--red)); border-radius: 2px; }
+.float-logo-handle.tl { left: -7px; top: -7px; cursor: nwse-resize; }
+.float-logo-handle.br { right: -7px; bottom: -7px; cursor: nwse-resize; }
+.float-logo-handle.tr { right: -7px; top: -7px; cursor: nesw-resize; }
+.float-logo-handle.bl { left: -7px; bottom: -7px; cursor: nesw-resize; }
+.float-logo-restore { position: fixed; right: 16px; bottom: 16px; z-index: 90; padding: 6px 12px; border-radius: 16px; background: rgba(0, 0, 0, .75); border: 1px solid rgba(255, 255, 255, .25); color: #fff; font-size: 12px; opacity: .6; transition: opacity .2s; }
+.float-logo-restore:hover, .float-logo-restore:focus-visible { opacity: 1; }
+.float-logo-menu { position: fixed; z-index: 95; min-width: 210px; margin: 0; padding: 6px 0; list-style: none; background: rgba(0, 0, 0, .95); border: 1px solid rgba(255, 255, 255, .15); border-radius: 4px; box-shadow: 0 8px 24px rgba(0, 0, 0, .6); animation: drop .15s ease-out; }
+.float-logo-menu li.divider { border-top: 1px solid rgba(255, 255, 255, .12); margin-top: 6px; padding-top: 6px; }
+.float-logo-menu button { display: flex; align-items: center; gap: 8px; width: 100%; padding: 6px 14px 6px 10px; background: none; border: 0; color: #e5e5e5; font: inherit; font-size: 14px; text-align: left; cursor: pointer; }
+.float-logo-menu button:hover, .float-logo-menu button:focus-visible { background: rgba(255, 255, 255, .1); color: #fff; outline: none; }
+.float-logo-menu .check { display: inline-grid; place-items: center; width: 14px; }
+
+/* Pop-out logo window (Document Picture-in-Picture): the logo edge to edge, controls on hover */
+.pip-body { margin: 0; height: 100vh; overflow: hidden; display: grid; place-items: center; user-select: none; font-family: system-ui, sans-serif; }
+.pip-logo { display: block; width: 100%; height: 100vh; object-fit: contain; line-height: 1; text-align: center; align-content: center; }
+.pip-bar { position: fixed; left: 50%; bottom: 6px; transform: translateX(-50%); display: flex; gap: 2px; padding: 3px; border-radius: 16px; background: rgba(0, 0, 0, .75); opacity: 0; transition: opacity .2s; }
+.pip-body:hover .pip-bar, .pip-body.pinned .pip-bar { opacity: 1; }
+.pip-bar button { width: 26px; height: 26px; border: 0; border-radius: 50%; background: none; color: #fff; font-size: 15px; line-height: 1; cursor: pointer; }
+.pip-bar button:hover, .pip-bar button:focus-visible { background: rgba(255, 255, 255, .2); outline: none; }
