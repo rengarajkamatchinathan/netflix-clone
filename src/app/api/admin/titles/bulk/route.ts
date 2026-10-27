@@ -1,4 +1,5 @@
 import { requireAdmin } from '@/server/auth'
+import { catalogChanged } from '@/server/catalog'
 import { one, tx } from '@/server/db'
 import { fail, handle, json, readBody } from '@/server/http'
 
@@ -26,5 +27,6 @@ export const POST = handle(async req => {
       }
     }
   })
+  catalogChanged()
   return json({ ok: true })
 })

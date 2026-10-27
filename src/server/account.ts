@@ -3,7 +3,7 @@ import type pg from 'pg'
 import { hash } from '@/lib/ids'
 import { normalizeAnswer, QUESTION_KEYS, SECURITY_QUESTIONS } from '@/lib/securityQuestions'
 import type { Me, SecurityAnswer } from '@/lib/types'
-import { many, one } from './db'
+import { one } from './db'
 import { fail } from './http'
 import type { SessionUser } from './auth'
 
@@ -12,33 +12,48 @@ export const RECENT_LIMIT = 20
 export const PROFILE_COLORS = ['#e50914', '#2f80ed', '#f2c94c', '#27ae60', '#9b51e0', '#f2994a']
 const HEX = /^#[0-9a-f]{6}$/i
 
-// Everything the app needs about the signed-in account.
-export async function meFor(user: Pick<SessionUser, 'id' | 'email' | 'role' | 'created_at'>): Promise<Me> {
-  const profiles = await many(
-    `select p.id, p.name, p.avatar_id, p.color, p.is_kids, p.notif_seen_at, a.url as avatar_url
-     from profiles p left join avatars a on a.id = p.avatar_id where p.user_id = $1 order by p.id`, [user.id])
-  const ids = profiles.map(p => p.id)
-  const [list, progress, positions, recent, questions] = await Promise.all([
-    many('select profile_id, title_id from my_list where profile_id = any($1) order by added_at desc', [ids]),
-    many('select profile_id, title_id, pct from watch_progress where profile_id = any($1)', [ids]),
-    many('select profile_id, title_id, season, episode from watch_position where profile_id = any($1)', [ids]),
-    many(`select profile_id, title_id from (
-            select profile_id, title_id, max(played_at) as last, row_number() over (partition by profile_id order by max(played_at) desc) as n
-            from play_events where profile_id = any($1) group by profile_id, title_id) r
-          where n <= $2 order by last desc`, [ids, RECENT_LIMIT]),
-    many('select question_key from security_answers where user_id = $1 order by slot', [user.id]),
-  ])
+// Everything the app needs about an account, as json columns of one row; $1 is the user id. One query
+// (rather than one per table) so a page render waits on a single database round trip.
+export const ME_COLUMNS = `
+  (select coalesce(json_agg(json_build_object('id', p.id, 'name', p.name, 'avatar_id', p.avatar_id, 'color', p.color, 'is_kids', p.is_kids,
+      'notif_seen_at', p.notif_seen_at, 'avatar_url', a.url) order by p.id), '[]')
+    from profiles p left join avatars a on a.id = p.avatar_id where p.user_id = $1) as profiles,
+  (select coalesce(json_agg(json_build_array(l.profile_id, l.title_id) order by l.added_at desc), '[]')
+    from my_list l join profiles p on p.id = l.profile_id where p.user_id = $1) as list,
+  (select coalesce(json_agg(json_build_array(w.profile_id, w.title_id, w.pct)), '[]')
+    from watch_progress w join profiles p on p.id = w.profile_id where p.user_id = $1) as progress,
+  (select coalesce(json_agg(json_build_array(w.profile_id, w.title_id, w.season, w.episode)), '[]')
+    from watch_position w join profiles p on p.id = w.profile_id where p.user_id = $1) as positions,
+  (select coalesce(json_agg(json_build_array(r.profile_id, r.title_id) order by r.last desc), '[]') from (
+      select e.profile_id, e.title_id, max(e.played_at) as last, row_number() over (partition by e.profile_id order by max(e.played_at) desc) as n
+      from play_events e join profiles p on p.id = e.profile_id where p.user_id = $1 group by e.profile_id, e.title_id) r
+    where r.n <= ${RECENT_LIMIT}) as recent,
+  (select coalesce(json_agg(question_key order by slot), '[]') from security_answers where user_id = $1) as questions`
+
+type Pair = [number, string]
+export interface MeRow {
+  profiles: { id: number; name: string; avatar_id: string | null; color: string; is_kids: boolean; notif_seen_at: string; avatar_url: string | null }[]
+  list: Pair[]; progress: [number, string, number][]; positions: [number, string, number, number][]; recent: Pair[]; questions: string[]
+}
+
+// Shapes a row of ME_COLUMNS for the app.
+export function toMe(user: Pick<SessionUser, 'id' | 'email' | 'role' | 'created_at'>, r: MeRow): Me {
   return {
-    user: { id: user.id, email: user.email, role: user.role, createdAt: new Date(user.created_at).toISOString(), questions: questions.map(q => q.question_key) },
-    profiles: profiles.map(p => ({
+    user: { id: user.id, email: user.email, role: user.role, createdAt: new Date(user.created_at).toISOString(), questions: r.questions },
+    profiles: r.profiles.map(p => ({
       id: p.id, name: p.name, avatarId: p.avatar_id, avatarUrl: p.avatar_url, color: p.color, isKids: p.is_kids,
-      list: list.filter(l => l.profile_id === p.id).map(l => l.title_id),
-      progress: Object.fromEntries(progress.filter(x => x.profile_id === p.id).map(x => [x.title_id, x.pct])),
-      recent: recent.filter(x => x.profile_id === p.id).map(x => x.title_id),
-      position: Object.fromEntries(positions.filter(x => x.profile_id === p.id).map(x => [x.title_id, { season: x.season, episode: x.episode }])),
+      list: r.list.filter(([pid]) => pid === p.id).map(([, t]) => t),
+      progress: Object.fromEntries(r.progress.filter(([pid]) => pid === p.id).map(([, t, pct]) => [t, pct])),
+      recent: r.recent.filter(([pid]) => pid === p.id).map(([, t]) => t),
+      position: Object.fromEntries(r.positions.filter(([pid]) => pid === p.id).map(([, t, season, episode]) => [t, { season, episode }])),
       notifSeenAt: new Date(p.notif_seen_at).toISOString(),
     })),
   }
+}
+
+// Everything the app needs about the signed-in account.
+export async function meFor(user: Pick<SessionUser, 'id' | 'email' | 'role' | 'created_at'>): Promise<Me> {
+  return toMe(user, (await one<MeRow>(`select ${ME_COLUMNS}`, [user.id]))!)
 }
 
 // Validates [{ key, answer }, { key, answer }] and returns it normalised.

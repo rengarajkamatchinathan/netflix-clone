@@ -2,6 +2,7 @@
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import { api } from '@/lib/api'
 import { useBrowseMaybe } from '@/context/BrowseContext'
+import Image from 'next/image'
 import Link from 'next/link'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { useApp } from '@/context/AppContext'
@@ -17,21 +18,35 @@ export function Logo({ size = 32 }: { size?: number }) {
   return <span className="logo" style={{ fontSize: size }}>STREAMFLIX</span>
 }
 
+// Width of a row card at each of the row breakpoints (see .slider --per), so the browser picks a
+// copy of the image no bigger than the card.
+export const CARD_SIZES = '(max-width: 500px) 50vw, (max-width: 800px) 40vw, (max-width: 1100px) 25vw, (max-width: 1400px) 20vw, 17vw'
+
 // A show's image with its crop from Admin → Shows: filling the frame, zoomed about the crop point, or the
 // whole image over a blurred copy of itself. Only cards and the info modal apply the crop.
-export function PosterImg({ src, crop }: { src: string; crop?: ImageCrop | null }) {
+// Web images go through Next's image optimiser, which resizes them for `sizes` and serves AVIF/WebP. If it
+// can't fetch one (some hosts refuse servers), the browser loads the original instead.
+export function PosterImg({ src, crop, sizes = CARD_SIZES, eager }: { src: string; crop?: ImageCrop | null; sizes?: string; eager?: boolean }) {
+  const [failed, setFailed] = useState<string | null>(null)
   const whole = crop?.fit === 'contain'
+  const img = {
+    src, alt: '', fill: true, draggable: false, referrerPolicy: 'no-referrer' as const,
+    unoptimized: failed === src || !/^https?:\/\//i.test(src), onError: () => setFailed(src),
+  }
   return <>
-    {/* eslint-disable-next-line @next/next/no-img-element */}
-    {whole && <img className="poster-img-fill" src={src} alt="" aria-hidden="true" loading="lazy" draggable="false" referrerPolicy="no-referrer" />}
-    {/* eslint-disable-next-line @next/next/no-img-element */}
-    <img className={`poster-img ${whole ? 'whole' : ''}`} src={src} alt="" loading="lazy" draggable="false" referrerPolicy="no-referrer"
+    {/* The blurred copy only needs a thumbnail. */}
+    {whole && <Image className="poster-img-fill" {...img} sizes="64px" aria-hidden="true" />}
+    <Image className={`poster-img ${whole ? 'whole' : ''}`} {...img} sizes={sizes}
+      loading={eager ? 'eager' : 'lazy'} fetchPriority={eager ? 'high' : undefined}
       style={crop && !whole ? cssVars({ '--x': `${crop.x}%`, '--y': `${crop.y}%`, '--zoom': crop.zoom }) : undefined} />
   </>
 }
 
 // Uses the show's image link when present, otherwise generated placeholder art.
-export function PosterArt({ t, wide = true, bare, backdrop, children }: { t: Title; wide?: boolean; bare?: boolean; backdrop?: boolean; children?: ReactNode }) {
+// `sizes` is how wide it is drawn (defaults to a row card); `eager` loads it straight away, for the image the page opens on.
+export function PosterArt({ t, wide = true, bare, backdrop, sizes, eager, children }: {
+  t: Title; wide?: boolean; bare?: boolean; backdrop?: boolean; sizes?: string; eager?: boolean; children?: ReactNode
+}) {
   const { channelById } = useCatalog()
   // Tall cards use the show's optional tall "poster" image, the info modal its optional background
   // image, each with its own crop; without one they use the main image (the modal shows it uncropped).
@@ -42,7 +57,7 @@ export function PosterArt({ t, wide = true, bare, backdrop, children }: { t: Tit
   return (
     <div className={`poster ${wide ? 'wide' : 'tall'} ${src ? 'has-img' : ''}`}
       style={src ? undefined : { background: `radial-gradient(circle at 28% 22%, hsl(${(h + 40) % 360} 85% 58%), transparent 55%), radial-gradient(circle at 80% 90%, hsl(${(h + 300) % 360} 70% 35%), transparent 50%), linear-gradient(135deg, hsl(${h} 70% 28%), hsl(${(h + 200) % 360} 60% 10%))` }}>
-      {src && <PosterImg src={src} crop={crop} />}
+      {src && <PosterImg src={src} crop={crop} sizes={sizes} eager={eager} />}
       {!bare && <>
         {t.channel && <span className="poster-badge"><span className="logo">S</span></span>}
         {!src && <span className={`poster-title ${wide ? '' : 'tall'}`}>{t.name}</span>}
@@ -103,6 +118,7 @@ export function Navbar() {
   const pathname = usePathname()
   const inputRef = useRef<HTMLInputElement>(null)
   const prevPath = useRef('/browse')
+  const searchT = useRef<ReturnType<typeof setTimeout>>(undefined)
 
   useEffect(() => {
     const on = () => setSolid(window.scrollY > 0)
@@ -113,11 +129,17 @@ export function Navbar() {
   // Follow the URL when a search suggestion is picked.
   useEffect(() => { const v = params.get('q'); if (v) { setQ(v); setSearchOpen(true) } }, [params])
 
+  // The results follow the URL. It changes once typing pauses rather than on every key, since each
+  // change is a trip to the server.
   const onSearch = (v: string) => {
     setQ(v)
-    const to = v ? `/search?q=${encodeURIComponent(v)}` : prevPath.current
-    if (pathname === '/search') router.replace(to); else router.push(to)
+    clearTimeout(searchT.current)
+    searchT.current = setTimeout(() => {
+      const to = v ? `/search?q=${encodeURIComponent(v)}` : prevPath.current
+      if (pathname === '/search') router.replace(to); else router.push(to)
+    }, v ? 200 : 0)
   }
+  useEffect(() => () => clearTimeout(searchT.current), [])
   const openSearch = () => { setSearchOpen(true); setTimeout(() => inputRef.current?.focus(), 50) }
   const current = LINKS.find(([to]) => to === pathname)?.[1] || 'Browse'
 

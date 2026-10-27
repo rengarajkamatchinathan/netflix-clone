@@ -1,7 +1,14 @@
+import { revalidateTag, unstable_cache } from 'next/cache'
 import { channelTop10 } from '@/lib/ids'
 import { many } from './db'
 import { getSections } from './settings'
 import type { CatalogData, ChannelColors, ImageCrops, ScheduleBlock, TitleViewers, Video } from '@/lib/types'
+
+// The catalog is the same for every viewer, so it is cached between requests. Admin edits clear it
+// straight away (catalogChanged); otherwise it refreshes every minute, which is how quickly viewer
+// counts and scheduled shows show up.
+const CATALOG_TAG = 'catalog'
+export const catalogChanged = () => revalidateTag(CATALOG_TAG, { expire: 0 })
 
 // URL of a channel's uploaded logo; the version busts browser caches when it's replaced.
 export const logoUrl = (id: string, updatedAt: Date | string | null) =>
@@ -28,7 +35,7 @@ export async function weeklyViewers(): Promise<Record<string, number>> {
 
 interface TitleRow {
   id: string; name: string; year: number | null; type: 'tv' | 'movie'; genre: string | null; synopsis: string | null; category: string | null
-  maturity: string | null; image: string | null; poster: string | null; backdrop: string | null; crops: ImageCrops | null; link: string | null; videos: Video[]
+  maturity: string | null; image: string | null; poster: string | null; backdrop: string | null; crops: ImageCrops | null; link: string | null; episodes: number
   needs_review: boolean; added_at: Date | null; episodes_at: Date | null
 }
 
@@ -36,16 +43,21 @@ interface TitleRow {
 // (created within a day of the very first one) count as never added, so they don't fill New Releases.
 const ADDED_AT = `case when publish_at is not null or created_at > (select min(created_at) from titles) + interval '1 day'
   then coalesce(publish_at, created_at) end as added_at`
-// Last time episodes were added (the "New episodes" notification).
-const EPISODES_AT = `(select max(n.created_at) from notifications n where n.kind = 'episodes' and n.title_id = titles.id) as episodes_at`
+// Last time episodes were added (the "New episodes" notification), one grouped pass over notifications.
+const EPISODES_AT = `left join (select title_id, max(created_at) as episodes_at from notifications where kind = 'episodes' group by title_id) ep
+  on ep.title_id = titles.id`
+// Titles viewers may see right now.
+const isVisible = (t = '') => `not ${t}hidden and (${t}publish_at is null or ${t}publish_at <= now())`
 
 // Visible channels (with their visible shows in play order) and every visible title not tied only to hidden
-// channels or to a switched-off Series/Movies section.
-export async function loadCatalog({ includeHidden = false } = {}): Promise<CatalogData> {
+// channels or to a switched-off Series/Movies section. Episode links are left out (only their count is
+// sent); the player loads them with titleVideos / channelVideos.
+async function queryCatalog(): Promise<CatalogData> {
   const [channels, titles, links, sections, viewers] = await Promise.all([
-    many<ChannelRow>(`select id, name, tagline, sort_order, colors, bumpers, hidden, schedule, top10, logo_updated_at from channels ${includeHidden ? '' : 'where not hidden'} order by sort_order, name`),
-    many<TitleRow>(`select id, name, year, type, genre, synopsis, category, maturity, image, poster, backdrop, crops, link, videos, needs_review,
-      ${ADDED_AT}, ${EPISODES_AT} from titles ${includeHidden ? '' : 'where not hidden and (publish_at is null or publish_at <= now())'} order by seq`),
+    many<ChannelRow>('select id, name, tagline, sort_order, colors, bumpers, hidden, schedule, top10, logo_updated_at from channels where not hidden order by sort_order, name'),
+    many<TitleRow>(`select id, name, year, type, genre, synopsis, category, maturity, image, poster, backdrop, crops, link,
+      jsonb_array_length(videos)::int as episodes, needs_review, ${ADDED_AT}, episodes_at
+      from titles ${EPISODES_AT} where ${isVisible()} order by seq`),
     many<{ channel_id: string; title_id: string }>('select ct.channel_id, ct.title_id from channel_titles ct join channels c on c.id = ct.channel_id order by c.sort_order, ct.position, ct.title_id'),
     getSections(),
     titleViewers(),
@@ -64,7 +76,7 @@ export async function loadCatalog({ includeHidden = false } = {}): Promise<Catal
   }
   // Shows that only air on hidden channels are hidden with them. Shows on no channel are the
   // Series and Movies sections, which the admin can switch off as a whole.
-  const sectionOn = (t: TitleRow) => includeHidden || (t.type === 'movie' ? sections.movies : sections.series)
+  const sectionOn = (t: TitleRow) => (t.type === 'movie' ? sections.movies : sections.series)
   const shown = titles.filter(t => byTitle[t.id] || (!onAnyChannel.has(t.id) && sectionOn(t)))
   return {
     channels: channels.map(c => ({
@@ -75,10 +87,25 @@ export async function loadCatalog({ includeHidden = false } = {}): Promise<Catal
     })),
     titles: shown.map(t => ({
       id: t.id, title: t.name, year: t.year, type: t.type, genre: t.genre, synopsis: t.synopsis, category: t.category,
-      maturity: t.maturity, image: t.image, poster: t.poster, backdrop: t.backdrop, crops: t.crops ?? {}, link: t.link, videos: t.videos, needsReview: t.needs_review,
+      maturity: t.maturity, image: t.image, poster: t.poster, backdrop: t.backdrop, crops: t.crops ?? {}, link: t.link, episodes: t.episodes, needsReview: t.needs_review,
       channels: byTitle[t.id] || [],
       viewers: viewers[t.id] || { day: 0, week: 0, prev: 0 },
       addedAt: t.added_at?.toISOString() ?? null, episodesAt: t.episodes_at?.toISOString() ?? null,
     })),
   }
 }
+
+export const loadCatalog = unstable_cache(queryCatalog, ['catalog'], { tags: [CATALOG_TAG], revalidate: 60 })
+
+// Episode links of one visible title, for the built-in player.
+export const titleVideos = unstable_cache(async (id: string): Promise<Video[] | null> => {
+  const [row] = await many<{ videos: Video[] }>(`select videos from titles where id = $1 and ${isVisible()}`, [id])
+  return row ? row.videos : null
+}, ['title-videos'], { tags: [CATALOG_TAG], revalidate: 300 })
+
+// Episode links of every visible title on a channel, for the live player.
+export const channelVideos = unstable_cache(async (id: string): Promise<Record<string, Video[]>> => {
+  const rows = await many<{ id: string; videos: Video[] }>(`select t.id, t.videos from channel_titles ct join titles t on t.id = ct.title_id
+    where ct.channel_id = $1 and ${isVisible('t.')}`, [id])
+  return Object.fromEntries(rows.map(r => [r.id, r.videos]))
+}, ['channel-videos'], { tags: [CATALOG_TAG], revalidate: 300 })

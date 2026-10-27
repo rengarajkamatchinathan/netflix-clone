@@ -27,10 +27,22 @@ export function RequireUser({ admin = false, profile = false, children }: { admi
   return ok ? children : null
 }
 
-// Renders children only in the browser. Used for the viewer pages, which depend on the clock,
-// random bumpers and window size, so server HTML would never match.
+// Renders children only in the browser: for the players, and for parts that depend on the window
+// or saved browser settings, where server HTML would never match.
 export function ClientOnly({ children }: { children: ReactNode }) {
   const [mounted, setMounted] = useState(false)
   useEffect(() => setMounted(true), [])
   return mounted ? children : null
+}
+
+// The viewer's clock, ticking every `ms`. Null on the server and while the page hydrates (the server's
+// clock and time zone aren't the viewer's), so schedules render once the page is in the browser.
+export function useNow(ms = 30000): Date | null {
+  const [now, setNow] = useState<Date | null>(null)
+  useEffect(() => {
+    setNow(new Date())
+    const h = setInterval(() => setNow(new Date()), ms)
+    return () => clearInterval(h)
+  }, [ms])
+  return now
 }

@@ -1,5 +1,6 @@
 import { getChannel } from '@/server/admin'
 import { requireAdmin } from '@/server/auth'
+import { catalogChanged } from '@/server/catalog'
 import { many, tx } from '@/server/db'
 import { fail, handle, json, readBody } from '@/server/http'
 
@@ -15,5 +16,6 @@ export const PUT = handle<{ id: string }>(async (req, { id }) => {
     await cl.query('delete from channel_titles where channel_id = $1', [c.id])
     for (const [i, tid] of ids.entries()) await cl.query('insert into channel_titles (channel_id, title_id, position) values ($1, $2, $3)', [c.id, tid, i + 1])
   })
+  catalogChanged()
   return json({ ok: true })
 })
