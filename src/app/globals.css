@@ -268,6 +268,21 @@ button.notif { width: 100%; text-align: left; background: none; border: 0; borde
 /* Vertical padding gives the zoomed tile room (overflow-x:auto also clips the y axis); negative margin keeps the row spacing */
 .channel-strip { display: flex; gap: .4vw; overflow-x: auto; padding: 2.2vw var(--gutter); margin: -2.2vw 0; scrollbar-width: none; }
 .channel-strip::-webkit-scrollbar { display: none; }
+/* "On Now": the show each channel is airing, with the channel's logo and when the show ends */
+.onnow-card { position: relative; flex: 0 0 clamp(200px, 19vw, 320px); aspect-ratio: 16 / 9; border-radius: 4px; overflow: hidden; text-align: left; transition: transform .35s var(--ease-out), box-shadow .35s; }
+.onnow-card:first-child { transform-origin: left center; }
+.onnow-card:last-child { transform-origin: right center; }
+.onnow-card:hover, .onnow-card:focus-visible { transform: scale(1.08); transition-delay: .1s; box-shadow: 0 14px 36px rgba(0, 0, 0, .75); z-index: 2; }
+.onnow-card > .poster { position: absolute; inset: 0; height: 100%; border-radius: 0; }
+.onnow-shade { position: absolute; inset: 0; background: linear-gradient(180deg, rgba(0, 0, 0, .55) 0%, transparent 35%, transparent 50%, rgba(0, 0, 0, .85) 100%); }
+.onnow-logo { position: absolute; top: 8px; left: 10px; max-width: 34%; max-height: 26%; object-fit: contain; filter: drop-shadow(0 2px 6px rgba(0, 0, 0, .7)); }
+.onnow-chan { position: absolute; top: 8px; left: 10px; font-size: 12px; font-weight: 800; text-shadow: 0 1px 4px #000; }
+.onnow-card .live-pill { position: absolute; top: 8px; right: 8px; }
+.onnow-play { position: absolute; inset: 0; margin: auto; width: 40px; height: 40px; border-radius: 50%; background: rgba(0, 0, 0, .5); border: 1px solid #fff; display: grid; place-items: center; opacity: 0; transition: opacity .2s; }
+.onnow-card:hover .onnow-play, .onnow-card:focus-visible .onnow-play { opacity: 1; }
+.onnow-text { position: absolute; left: 10px; right: 10px; bottom: 8px; display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.onnow-text b { font-size: clamp(13px, 1vw, 16px); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.onnow-text small { font-size: 12px; color: #d2d2d2; }
 .channel-tile { position: relative; flex: 0 0 clamp(170px, 16vw, 280px); aspect-ratio: 16 / 9; border-radius: 4px; display: flex; flex-direction: column; justify-content: center; align-items: center; overflow: hidden; transition: transform .35s var(--ease-out), box-shadow .35s, border-radius .35s; }
 .channel-tile:first-child { transform-origin: left center; }
 .channel-tile:last-child { transform-origin: right center; }
@@ -663,11 +678,11 @@ button.notif { width: 100%; text-align: left; background: none; border: 0; borde
 /* ============ Card and info modal images: cropped as set in Admin → Shows (never stretched) ============ */
 /* Fills the frame, zoomed about the crop point (default: centred), or .whole: the full image over a blurred copy. */
 .poster-img-fill { display: none; }
-:is(.card, .preview-art, .more-art, .lv-art, .trend-item, .history-art, .backdrop-grid, .modal-hero, .adm-card-preview) .poster.has-img { background: #000; }
-:is(.card, .preview-art, .more-art, .lv-art, .trend-item, .history-art, .backdrop-grid, .modal-hero, .adm-card-preview) .poster-img {
+:is(.card, .preview-art, .more-art, .lv-art, .trend-item, .history-art, .backdrop-grid, .modal-hero, .onnow-card, .adm-card-preview) .poster.has-img { background: #000; }
+:is(.card, .preview-art, .more-art, .lv-art, .trend-item, .history-art, .backdrop-grid, .modal-hero, .onnow-card, .adm-card-preview) .poster-img {
   object-position: var(--x, 50%) var(--y, 50%); transform: scale(var(--zoom, 1)); transform-origin: var(--x, 50%) var(--y, 50%); }
-:is(.card, .preview-art, .more-art, .lv-art, .trend-item, .history-art, .backdrop-grid, .modal-hero, .adm-card-preview) .poster-img.whole { object-fit: contain; transform: none; }
-:is(.card, .preview-art, .more-art, .lv-art, .trend-item, .history-art, .backdrop-grid, .modal-hero, .adm-card-preview) .poster-img-fill { display: block; position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; transform: scale(1.2); filter: blur(14px) brightness(.7); }
+:is(.card, .preview-art, .more-art, .lv-art, .trend-item, .history-art, .backdrop-grid, .modal-hero, .onnow-card, .adm-card-preview) .poster-img.whole { object-fit: contain; transform: none; }
+:is(.card, .preview-art, .more-art, .lv-art, .trend-item, .history-art, .backdrop-grid, .modal-hero, .onnow-card, .adm-card-preview) .poster-img-fill { display: block; position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; transform: scale(1.2); filter: blur(14px) brightness(.7); }
 
 .top10-item .rank text { stroke-width: 3px; }
 

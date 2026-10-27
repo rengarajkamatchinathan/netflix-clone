@@ -6,7 +6,7 @@ import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { useApp } from '@/context/AppContext'
 import { useCatalog } from '@/context/CatalogContext'
 import { BrowseCtx, useBrowse, type CardRect, type Origin, type Rect } from '@/context/BrowseContext'
-import { hash, type Channel, type Title } from '@/lib/catalog'
+import { hash, timeLabel, topToday, upNext, type Channel, type Title } from '@/lib/catalog'
 import type { WatchPosition } from '@/lib/types'
 import { cssVars, PosterArt } from './ui'
 import { setLogoChannel } from './FloatingLogo'
@@ -353,9 +353,11 @@ export function Billboard({ items, start = 0 }: { items: { t: Title; rank?: numb
 
 export function DetailModal({ t, rect, onClose }: { t: Title; rect: Rect; onClose: () => void }) {
   const { openTitle, playTitle } = useBrowse()
-  const { titles, channelById } = useCatalog()
+  const cat = useCatalog()
+  const { titles, channelById } = cat
   const { profile } = useApp()
   const pos = profile?.position[t.id]
+  const rank = topToday(cat).findIndex(x => x.id === t.id) + 1
   const ref = useRef<HTMLDivElement>(null)
   const bg = useRef<HTMLDivElement>(null)
   const from = useRef<Keyframe[]>([])
@@ -405,7 +407,7 @@ export function DetailModal({ t, rect, onClose }: { t: Title; rect: Rect; onClos
           <div className="modal-cols">
             <div>
               <Meta t={t} year />
-              {t.isNew && <div className="top10-line"><span className="top10-badge"><small>TOP</small>10</span>#{(hash(t.id) % 9) + 1} in {t.type === 'tv' ? 'TV Shows' : 'Films'} Today</div>}
+              {rank > 0 && <div className="top10-line"><span className="top10-badge"><small>TOP</small>10</span>#{rank} in Top 10 Today</div>}
               <p className="modal-synopsis">{t.synopsis}</p>
               {t.type === 'tv' && <WatchTracker t={t} />}
             </div>
@@ -448,12 +450,32 @@ export function DetailModal({ t, rect, onClose }: { t: Title; rect: Rect; onClos
 
 /* ---------- Channels ---------- */
 
-export function ChannelStrip() {
-  const { channels } = useCatalog()
+// "On Now": what every channel is airing right now, from its schedule. A card opens the live channel.
+export function OnNowRow() {
+  const cat = useCatalog()
+  const router = useRouter()
+  const [now, setNow] = useState(() => new Date())
+  useEffect(() => { const h = setInterval(() => setNow(new Date()), 30000); return () => clearInterval(h) }, [])
   return (
     <section className="row">
-      <h2 className="row-header"><Link href="/channels" className="row-title">Channels<span className="explore">Explore All <ChevronRight size={14} /></span></Link></h2>
-      <div className="channel-strip">{channels.map(c => <ChannelTile key={c.id} c={c} />)}</div>
+      <h2 className="row-header"><Link href="/channels" className="row-title">On Now<span className="explore">All Channels <ChevronRight size={14} /></span></Link></h2>
+      <div className="channel-strip">
+        {cat.channels.map(c => {
+          const { current, endsAt } = upNext(cat, c.id, 1, now)
+          if (!current) return null
+          return (
+            <button key={c.id} type="button" className="onnow-card" onClick={() => router.push(`/live/${c.id}`)} aria-label={`Watch ${current.name} live on ${c.name}`}>
+              <PosterArt t={current} bare />
+              <span className="onnow-shade" />
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              {c.image ? <img className="onnow-logo" src={c.image} alt="" /> : <span className="onnow-chan" style={{ color: c.accent }}>{c.name}</span>}
+              <span className="live-pill"><i />LIVE</span>
+              <span className="onnow-play"><Play size={18} /></span>
+              <span className="onnow-text"><b>{current.name}</b><small>{endsAt ? `Until ${timeLabel(endsAt)}` : c.name}</small></span>
+            </button>
+          )
+        })}
+      </div>
     </section>
   )
 }

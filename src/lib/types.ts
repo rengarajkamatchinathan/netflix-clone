@@ -39,7 +39,13 @@ export interface RawTitle {
   videos: Video[]
   needsReview: boolean
   channels: string[]
+  viewers: TitleViewers
+  addedAt: string | null // when it was added after the first import (null for imported shows)
+  episodesAt: string | null // when episodes were last added
 }
+
+// Profiles that pressed Play: in the last day, the last 7 days, and the 7 days before that.
+export interface TitleViewers { day: number; week: number; prev: number }
 
 export interface RawChannel {
   id: string

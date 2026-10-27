@@ -1,7 +1,7 @@
 // Turns the catalog from /api/catalog into what the app displays, plus the live-channel schedule.
 // Everything here is a pure function of a Catalog, so it is safe on the server and in the browser.
 import { hash, youtubeId } from './ids'
-import type { Bumper, CatalogData, ImageCrops, RawChannel, RawTitle, ScheduleBlock, TitleType, Video } from './types'
+import type { Bumper, CatalogData, ImageCrops, RawChannel, RawTitle, ScheduleBlock, TitleType, TitleViewers, Video } from './types'
 
 export { hash, youtubeId }
 
@@ -35,7 +35,10 @@ export interface Title {
   videos: Video[]
   hasMedia: boolean
   videoUrl: string
-  isNew: boolean
+  viewers: TitleViewers
+  addedAt: string | null
+  episodesAt: string | null
+  isNew: boolean // episodes added in the last 14 days ("New Episodes" ribbon)
 }
 
 export interface Channel {
@@ -88,7 +91,10 @@ function toTitle(s: RawTitle, i: number): Title {
     videos,
     hasMedia: videos.length > 0,
     videoUrl: videos[0]?.url || SAMPLE,
-    isNew: (s.year ?? 0) >= 2010 || i % 9 === 0,
+    viewers: s.viewers || { day: 0, week: 0, prev: 0 },
+    addedAt: s.addedAt || null,
+    episodesAt: s.episodesAt || null,
+    isNew: !!s.episodesAt && Date.now() - Date.parse(s.episodesAt) < 14 * 86400000,
   }
 }
 
@@ -139,28 +145,92 @@ export function episodesFor(t: Title): Episode[] {
 
 /* ---------- Browse rows and search ---------- */
 
-export interface RowData { title: string; items: Title[]; top10?: boolean }
+// A browse row. `onNow` is the live channels strip, drawn by the page instead of as title cards.
+export interface RowData { title: string; items: Title[]; top10?: boolean; resume?: boolean; link?: string; onNow?: boolean }
 
+const DAY_MS = 86400000
+const within = (iso: string | null, days: number) => !!iso && Date.now() - Date.parse(iso) < days * DAY_MS
 const shuffle = (arr: Title[], seed: string) => [...arr].sort((a, b) => (hash(a.id + seed) % 1000) - (hash(b.id + seed) % 1000))
-const decade = (pool: Title[], from: number, to: number) => pool.filter(t => t.year && t.year >= from && t.year < to)
+// A stable order that changes once a day, for rows with no ranking of their own.
+const daily = (arr: Title[], seed: string) => shuffle(arr, seed + new Date().toDateString())
+const ids = (list: Title[]) => new Set(list.map(t => t.id))
 
-export function rowsFor(cat: Catalog, type?: string): RowData[] {
-  const { titles } = cat
-  const pool = !type ? titles : type === 'new' ? titles.filter(t => t.isNew) : titles.filter(t => t.type === type)
-  const count = (g: string) => pool.filter(t => t.genre === g).length
-  const genres = [...new Set(pool.map(t => t.genre))].sort((a, b) => count(b) - count(a))
-  const rows: RowData[] = [
-    { title: 'Trending Now', items: shuffle(pool, 'trend').slice(0, 24) },
-    { title: 'Top 10 Today', items: shuffle(pool, 'top').slice(0, 10), top10: true },
-    { title: 'Ready to Watch', items: pool.filter(t => t.hasMedia) },
-    { title: '90s Classics', items: shuffle(decade(pool, 1990, 2000), '90s') },
-    { title: '2000s Throwbacks', items: shuffle(decade(pool, 2000, 2010), '00s') },
-    { title: 'Sitcoms', items: pool.filter(t => t.category === 'Series') },
-    { title: 'Golden Age Cartoons', items: decade(pool, 1900, 1990).sort((a, b) => (a.year ?? 0) - (b.year ?? 0)) },
-    { title: 'New Releases', items: shuffle(pool.filter(t => t.isNew), 'new') },
-    ...genres.filter(g => g !== 'Sitcom').slice(0, 6).map(g => ({ title: `${g} Picks`, items: shuffle(pool.filter(t => t.genre === g), g) })),
-  ]
-  return rows.filter(r => r.items.length)
+// The channels' own Top 10s taken in turn (every #1, then every #2, …): what to show while there
+// aren't enough plays to rank by.
+function channelPicks(cat: Catalog, pool: Set<string>): Title[] {
+  const out: string[] = []
+  for (let i = 0; i < 10; i++) for (const c of cat.channels) { const id = c.top10[i]; if (id && pool.has(id)) out.push(id) }
+  return [...new Set(out)].map(id => cat.byId[id])
+}
+
+// "Top 10 Today": most viewers in the last day, then in the last week, then the channels' Top 10s.
+export function topToday(cat: Catalog, pool: Title[] = cat.titles): Title[] {
+  const played = pool.filter(t => t.viewers.week > 0).sort((a, b) => b.viewers.day - a.viewers.day || b.viewers.week - a.viewers.week)
+  return [...new Set([...played, ...channelPicks(cat, ids(pool)), ...daily(pool, 'top')])].slice(0, 10)
+}
+
+// "Trending Now": most viewers this week, with a bonus for gaining viewers on the week before; then
+// new arrivals, the channels' Top 10s and a daily pick of the rest (skipping what Top 10 Today shows).
+function trending(cat: Catalog, pool: Title[], top: Title[]): Title[] {
+  const score = (t: Title) => t.viewers.week + Math.max(0, t.viewers.week - t.viewers.prev)
+  const played = pool.filter(t => t.viewers.week > 0).sort((a, b) => score(b) - score(a))
+  const inTop = ids(top)
+  const fill = [...newReleases(pool), ...channelPicks(cat, ids(pool)), ...daily(pool, 'trend')].filter(t => !inTop.has(t.id))
+  return [...new Set([...played, ...fill])].slice(0, 20)
+}
+
+// Added (or published) in the last 30 days, newest first.
+const newReleases = (pool: Title[]) => pool.filter(t => within(t.addedAt, 30)).sort((a, b) => Date.parse(b.addedAt!) - Date.parse(a.addedAt!))
+
+type Viewing = { recent: string[]; progress: Record<string, number>; list: string[] }
+
+// Episodes added in the last 14 days; shows this profile follows (My List or played) first.
+function newEpisodes(pool: Title[], v: Viewing): Title[] {
+  const mine = new Set([...v.list, ...v.recent])
+  return pool.filter(t => t.isNew).sort((a, b) => Number(mine.has(b.id)) - Number(mine.has(a.id)) || Date.parse(b.episodesAt!) - Date.parse(a.episodesAt!))
+}
+
+// "More from <channel>": the channel this profile has played most (recent plays count more),
+// with the shows on it they haven't played, in its Top 10 order then line-up order.
+function favouriteChannel(cat: Catalog, v: Viewing, pool: Set<string>): RowData | null {
+  const weight: Record<string, number> = {}
+  v.recent.forEach((id, i) => cat.byId[id]?.channels.forEach(c => { weight[c] = (weight[c] || 0) + 1 / (i + 1) }))
+  const c = cat.channels.filter(c => weight[c.id]).sort((a, b) => weight[b.id] - weight[a.id])[0]
+  if (!c) return null
+  const seen = new Set(v.recent)
+  const items = [...new Set([...c.top10, ...c.titleIds])].filter(id => !seen.has(id) && pool.has(id)).map(id => cat.byId[id])
+  return { title: `More from ${c.name}`, items, link: `/channel/${c.id}` }
+}
+
+// Every row of the home page (no type), the TV Shows / Films pages (type 'tv' / 'movie') and
+// New & Popular ('new'), in display order. Rows with nothing in them are left out.
+export function rowsFor(cat: Catalog, v: Viewing, type?: string): RowData[] {
+  const pool = !type || type === 'new' ? cat.titles : cat.titles.filter(t => t.type === type)
+  const inPool = ids(pool)
+  const mine = (list: Title[]) => list.filter(t => inPool.has(t.id))
+  const top = topToday(cat, pool)
+  const because = becauseYouWatched(cat, v)
+  const myList = mine(v.list.map(id => cat.byId[id]).filter(Boolean))
+  const rows: (RowData | null)[] = type === 'new'
+    ? [
+        { title: 'New Episodes', items: newEpisodes(pool, v) },
+        { title: 'New Releases', items: newReleases(pool) },
+        { title: 'Trending Now', items: trending(cat, pool, top) },
+        { title: 'Top 10 Today', items: top, top10: true },
+      ]
+    : [
+        { title: `Continue Watching`, items: mine(continueWatching(cat, v)), resume: true },
+        !type ? { title: 'On Now', items: [], onNow: true } : null,
+        { title: 'Trending Now', items: trending(cat, pool, top) },
+        because && { title: `Because You Watched ${because.source.name}`, items: mine(because.items) },
+        { title: 'Top 10 Today', items: top, top10: true },
+        { title: 'New Episodes', items: newEpisodes(pool, v) },
+        { title: 'My List', items: myList, link: '/my-list' },
+        { title: 'New Releases', items: newReleases(pool) },
+        favouriteChannel(cat, v, inPool),
+        { title: 'Throwbacks', items: daily(pool.filter(t => t.year && t.year < 2005), 'throwback') },
+      ]
+  return rows.filter((r): r is RowData => !!r && (r.onNow ? cat.channels.length > 0 : r.items.length > 0))
 }
 
 export function search(cat: Catalog, q: string): Title[] {
@@ -283,24 +353,29 @@ export function randomBumper(c: Channel, previous: Bumper | null = null): Bumper
 
 /* ---------- Personal rows (from the profile's plays) ---------- */
 
-type Viewing = { recent: string[]; progress: Record<string, number> }
 const onChannel = (t: Title, channelId?: string) => !channelId || t.channels.includes(channelId)
 
 // "Continue Watching": shows played most recently first, then any part-watched in the built-in player.
-export function continueWatching(cat: Catalog, v: Viewing, channelId?: string): Title[] {
+export function continueWatching(cat: Catalog, v: Pick<Viewing, 'recent' | 'progress'>, channelId?: string): Title[] {
   const partWatched = Object.entries(v.progress).filter(([, p]) => p > 0 && p < 98).map(([id]) => id)
   return [...new Set([...v.recent, ...partWatched])].map(id => cat.byId[id]).filter(t => t && onChannel(t, channelId))
 }
 
-// "Because You Watched X": the last show played (on this channel, if given) and others like it
-// that haven't been played yet: same genre first, then the same channel.
-export function becauseYouWatched(cat: Catalog, v: Viewing, channelId?: string): { source: Title; items: Title[] } | null {
-  const source = v.recent.map(id => cat.byId[id]).find(t => t && onChannel(t, channelId))
-  if (!source) return null
+// "Because You Watched X": X is one of the last 3 shows played (on this channel, if given), a
+// different one each day. Shows not played yet are scored on how alike they are: same genre +3,
+// same type (series/film) +2, released within 5 years +1, sharing a channel +1 (off channel pages).
+// Ties go to the shows with the most viewers this week.
+export function becauseYouWatched(cat: Catalog, v: Pick<Viewing, 'recent'>, channelId?: string): { source: Title; items: Title[] } | null {
+  const lastFew = v.recent.map(id => cat.byId[id]).filter(t => t && onChannel(t, channelId)).slice(0, 3)
+  if (!lastFew.length) return null
+  const source = lastFew[hash(new Date().toDateString()) % lastFew.length]
   const seen = new Set(v.recent)
-  const pool = cat.titles.filter(t => !seen.has(t.id) && onChannel(t, channelId))
-  const sameGenre = pool.filter(t => t.genre === source.genre)
-  const sameChannel = pool.filter(t => t.genre !== source.genre && t.channels.some(c => source.channels.includes(c)))
-  const items = [...sameGenre, ...sameChannel].slice(0, 18)
+  const score = (t: Title) => (t.genre === source.genre ? 3 : 0) + (t.type === source.type ? 2 : 0)
+    + (t.year && source.year && Math.abs(t.year - source.year) <= 5 ? 1 : 0)
+    + (!channelId && t.channels.some(c => source.channels.includes(c)) ? 1 : 0)
+  const items = cat.titles.filter(t => !seen.has(t.id) && onChannel(t, channelId))
+    .map(t => ({ t, s: score(t) })).filter(x => x.s > 0)
+    .sort((a, b) => b.s - a.s || b.t.viewers.week - a.t.viewers.week)
+    .slice(0, 18).map(x => x.t)
   return items.length ? { source, items } : null
 }

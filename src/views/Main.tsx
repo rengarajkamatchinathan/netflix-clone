@@ -10,7 +10,7 @@ import { api } from '@/lib/api'
 import type { Bumper, HistoryEntry } from '@/lib/types'
 import { YouTubeClip } from './Player'
 import { cssVars, Footer, Navbar, PosterArt, timeAgo } from '@/components/ui'
-import { Billboard, ChannelStrip, ChannelTile, posLabel, Row, TitleCard, useBrowse } from '@/components/Browse'
+import { Billboard, ChannelTile, OnNowRow, posLabel, Row, TitleCard, useBrowse } from '@/components/Browse'
 import { FloatingLogo } from '@/components/FloatingLogo'
 import { ChevronDown, ChevronLeft, ChevronRight, Close, Info, Mute, Play, Search as SearchIcon, Volume } from '@/components/icons'
 
@@ -19,16 +19,13 @@ const HEADINGS: Record<string, string> = { tv: 'TV Shows', movie: 'Films', new: 
 export function BrowsePage({ type }: { type?: string }) {
   const { profile } = useApp()
   const cat = useCatalog()
-  const rows = useMemo(() => rowsFor(cat, type), [cat, type])
+  const rows = useMemo(() => (profile ? rowsFor(cat, profile, type) : []), [cat, profile, type])
   if (!profile) return null
-  if (!rows.length) return <Grid heading={type ? HEADINGS[type] : ''} items={[]} empty="Nothing here yet. Add shows in the admin panel to fill this section." />
-  const top = rows.find(r => r.top10)?.items || rows[0].items
-  // The top five take turns in the billboard, starting from a different one each day.
-  const featured = top.slice(0, 5).map((t, k) => ({ t, rank: k + 1 }))
+  const top = rows.find(r => r.top10)?.items || rows.find(r => r.items.length)?.items || []
+  if (!top.length) return <Grid heading={type ? HEADINGS[type] : ''} items={[]} empty="Nothing here yet. Add shows in the admin panel to fill this section." />
+  // The Top 10's first five take turns in the billboard, starting from a different one each day.
+  const featured = top.slice(0, 5).map((t, k) => ({ t, rank: rows.some(r => r.top10) ? k + 1 : undefined }))
   const firstSlide = new Date().getDate() % featured.length
-  const continuing = continueWatching(cat, profile)
-  const because = becauseYouWatched(cat, profile)
-  const myList = profile.list.map(id => cat.byId[id]).filter(Boolean)
 
   return (
     <div className="page">
@@ -36,15 +33,9 @@ export function BrowsePage({ type }: { type?: string }) {
       {type && <div className="sub-header"><h1>{HEADINGS[type]}</h1></div>}
       <Billboard key={type || 'home'} items={featured} start={firstSlide} />
       <div className="rows">
-        {continuing.length > 0 && <Row title={`Continue Watching for ${profile.name}`} items={continuing} resume />}
-        {!type && <ChannelStrip />}
-        {rows.map((r, i) => (
-          <div key={r.title}>
-            <Row {...r} />
-            {i === 0 && because && <Row title={`Because You Watched ${because.source.name}`} items={because.items} />}
-            {i === 1 && myList.length > 0 && <Row title="My List" items={myList} link="/my-list" />}
-          </div>
-        ))}
+        {rows.map(r => r.onNow
+          ? <OnNowRow key={r.title} />
+          : <Row key={r.title} title={r.resume ? `${r.title} for ${profile.name}` : r.title} items={r.items} top10={r.top10} resume={r.resume} link={r.link} />)}
       </div>
       <Footer />
     </div>
