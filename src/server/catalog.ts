@@ -1,6 +1,6 @@
 import { many } from './db'
 import { getSections } from './settings'
-import type { CatalogData, ChannelColors, ScheduleBlock, Video } from '@/lib/types'
+import type { CatalogData, ChannelColors, ImageCrops, ScheduleBlock, Video } from '@/lib/types'
 
 // URL of a channel's uploaded logo; the version busts browser caches when it's replaced.
 export const logoUrl = (id: string, updatedAt: Date | string | null) =>
@@ -11,7 +11,8 @@ interface ChannelRow {
 }
 interface TitleRow {
   id: string; name: string; year: number | null; type: 'tv' | 'movie'; genre: string | null; synopsis: string | null; category: string | null
-  maturity: string | null; image: string | null; poster: string | null; link: string | null; videos: Video[]; needs_review: boolean
+  maturity: string | null; image: string | null; poster: string | null; backdrop: string | null; crops: ImageCrops | null; link: string | null; videos: Video[]
+  needs_review: boolean
 }
 
 // Visible channels (with their visible shows in play order) and every visible title not tied only to hidden
@@ -19,7 +20,7 @@ interface TitleRow {
 export async function loadCatalog({ includeHidden = false } = {}): Promise<CatalogData> {
   const [channels, titles, links, sections] = await Promise.all([
     many<ChannelRow>(`select id, name, tagline, sort_order, colors, bumpers, hidden, schedule, logo_updated_at from channels ${includeHidden ? '' : 'where not hidden'} order by sort_order, name`),
-    many<TitleRow>(`select id, name, year, type, genre, synopsis, category, maturity, image, poster, link, videos, needs_review from titles ${includeHidden ? '' : 'where not hidden and (publish_at is null or publish_at <= now())'} order by seq`),
+    many<TitleRow>(`select id, name, year, type, genre, synopsis, category, maturity, image, poster, backdrop, crops, link, videos, needs_review from titles ${includeHidden ? '' : 'where not hidden and (publish_at is null or publish_at <= now())'} order by seq`),
     many<{ channel_id: string; title_id: string }>('select ct.channel_id, ct.title_id from channel_titles ct join channels c on c.id = ct.channel_id order by c.sort_order, ct.position, ct.title_id'),
     getSections(),
   ])
@@ -47,7 +48,7 @@ export async function loadCatalog({ includeHidden = false } = {}): Promise<Catal
     })),
     titles: shown.map(t => ({
       id: t.id, title: t.name, year: t.year, type: t.type, genre: t.genre, synopsis: t.synopsis, category: t.category,
-      maturity: t.maturity, image: t.image, poster: t.poster, link: t.link, videos: t.videos, needsReview: t.needs_review,
+      maturity: t.maturity, image: t.image, poster: t.poster, backdrop: t.backdrop, crops: t.crops ?? {}, link: t.link, videos: t.videos, needsReview: t.needs_review,
       channels: byTitle[t.id] || [],
     })),
   }

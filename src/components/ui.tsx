@@ -7,7 +7,7 @@ import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { useApp } from '@/context/AppContext'
 import { useCatalog } from '@/context/CatalogContext'
 import type { Title } from '@/lib/catalog'
-import type { AppNotification } from '@/lib/types'
+import type { AppNotification, ImageCrop, ImageKind } from '@/lib/types'
 import { Bell, ChevronDown, Clock, Close, HelpCircle, Pencil, Search, Shield, User } from './icons'
 
 // Inline style that also sets CSS custom properties (--name).
@@ -17,21 +17,35 @@ export function Logo({ size = 32 }: { size?: number }) {
   return <span className="logo" style={{ fontSize: size }}>STREAMFLIX</span>
 }
 
+// A show's image with its crop from Admin → Shows: filling the frame, zoomed about the crop point, or the
+// whole image over a blurred copy of itself. Only cards and the info modal apply the crop.
+export function PosterImg({ src, crop }: { src: string; crop?: ImageCrop | null }) {
+  const whole = crop?.fit === 'contain'
+  return <>
+    {/* eslint-disable-next-line @next/next/no-img-element */}
+    {whole && <img className="poster-img-fill" src={src} alt="" aria-hidden="true" loading="lazy" draggable="false" referrerPolicy="no-referrer" />}
+    {/* eslint-disable-next-line @next/next/no-img-element */}
+    <img className={`poster-img ${whole ? 'whole' : ''}`} src={src} alt="" loading="lazy" draggable="false" referrerPolicy="no-referrer"
+      style={crop && !whole ? cssVars({ '--x': `${crop.x}%`, '--y': `${crop.y}%`, '--zoom': crop.zoom }) : undefined} />
+  </>
+}
+
 // Uses the show's image link when present, otherwise generated placeholder art.
-export function PosterArt({ t: show, wide = true, bare, children }: { t: Title; wide?: boolean; bare?: boolean; children?: ReactNode }) {
+export function PosterArt({ t, wide = true, bare, backdrop, children }: { t: Title; wide?: boolean; bare?: boolean; backdrop?: boolean; children?: ReactNode }) {
   const { channelById } = useCatalog()
-  // Tall cards use the show's optional tall "poster" image when it has one.
-  const t = !wide && show.poster ? { ...show, image: show.poster } : show
+  // Tall cards use the show's optional tall "poster" image, the info modal its optional background
+  // image, each with its own crop; without one they use the main image (the modal shows it uncropped).
+  const kind: ImageKind = backdrop ? 'backdrop' : wide ? 'image' : 'poster'
+  const src = t[kind] || t.image
+  const crop = t[kind] ? t.crops[kind] : backdrop ? null : t.crops.image
   const h = t.hue
   return (
-    <div className={`poster ${wide ? 'wide' : 'tall'} ${t.image ? 'has-img' : ''}`}
-      style={t.image ? undefined : { background: `radial-gradient(circle at 28% 22%, hsl(${(h + 40) % 360} 85% 58%), transparent 55%), radial-gradient(circle at 80% 90%, hsl(${(h + 300) % 360} 70% 35%), transparent 50%), linear-gradient(135deg, hsl(${h} 70% 28%), hsl(${(h + 200) % 360} 60% 10%))` }}>
-      {/* Image stretched to fill the card edge to edge, nothing cropped. */}
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      {t.image && <img className="poster-img" src={t.image} alt="" loading="lazy" draggable="false" referrerPolicy="no-referrer" />}
+    <div className={`poster ${wide ? 'wide' : 'tall'} ${src ? 'has-img' : ''}`}
+      style={src ? undefined : { background: `radial-gradient(circle at 28% 22%, hsl(${(h + 40) % 360} 85% 58%), transparent 55%), radial-gradient(circle at 80% 90%, hsl(${(h + 300) % 360} 70% 35%), transparent 50%), linear-gradient(135deg, hsl(${h} 70% 28%), hsl(${(h + 200) % 360} 60% 10%))` }}>
+      {src && <PosterImg src={src} crop={crop} />}
       {!bare && <>
         {t.channel && <span className="poster-badge"><span className="logo">S</span></span>}
-        {!t.image && <span className={`poster-title ${wide ? '' : 'tall'}`}>{t.name}</span>}
+        {!src && <span className={`poster-title ${wide ? '' : 'tall'}`}>{t.name}</span>}
         {t.isNew && <span className="poster-ribbon">New Episodes</span>}
         {t.channel && !wide && <span className="poster-chan">{channelById[t.channel]?.name}</span>}
       </>}

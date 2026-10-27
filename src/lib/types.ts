@@ -13,6 +13,13 @@ export interface ChannelColors { bg: string; accent: string; accent2: string }
 // back-to-back during the block; outside every block the whole line-up plays.
 export interface ScheduleBlock { start: number; end: number; titleIds: string[] }
 
+// How one of a show's images sits in its frame. 'cover' fills the frame, zoomed (1–3) about the point x, y (0–100 %);
+// 'contain' shows the whole image over a blurred copy of itself.
+export interface ImageCrop { fit: 'cover' | 'contain'; zoom: number; x: number; y: number }
+// The show's images: wide cards, tall cards, and the info modal background. Each has its own crop.
+export type ImageKind = 'image' | 'poster' | 'backdrop'
+export type ImageCrops = Partial<Record<ImageKind, ImageCrop>> // missing = fills the frame, centred
+
 // --- /api/catalog ---
 
 export interface RawTitle {
@@ -26,6 +33,8 @@ export interface RawTitle {
   maturity: string | null
   image: string | null
   poster: string | null
+  backdrop: string | null // info modal background
+  crops: ImageCrops
   link: string | null
   videos: Video[]
   needsReview: boolean

@@ -76,6 +76,10 @@ create table if not exists titles (
 alter table titles add column if not exists hidden boolean not null default false;
 -- Scheduled publishing: viewers see the title from this moment on (null = straight away).
 alter table titles add column if not exists publish_at timestamptz;
+-- Wide background for the show's info modal (null = use image).
+alter table titles add column if not exists backdrop text;
+-- How each image sits in its frame: { image, poster, backdrop } of { fit, zoom, x, y } (missing = fills it, centred).
+alter table titles add column if not exists crops jsonb;
 
 -- Site-wide switches set in the admin panel, e.g. 'sections' = { "series": true, "movies": false }.
 create table if not exists settings (

@@ -217,7 +217,20 @@ body.adm-modal-open { overflow: hidden; }
 .adm-show-preview { position: relative; border-radius: 4px; overflow: hidden; aspect-ratio: 16 / 9; max-width: 100%; }
 .adm-show-preview img, .adm-show-preview .adm-thumb { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
 .adm-show-preview span { position: absolute; left: 0; right: 0; bottom: 0; padding: 24px 10px 8px; background: linear-gradient(transparent, rgba(0, 0, 0, .85)); font-family: var(--display); font-size: 22px; line-height: 1; overflow-wrap: anywhere; }
-.adm-poster-preview { width: 120px; aspect-ratio: 2 / 3; object-fit: cover; border-radius: 4px; }
+.adm-preview .adm-label:not(:first-child) { margin-top: 8px; }
+/* image crop editor (the image itself is drawn by the site's .poster rules) */
+.adm-crop { display: flex; flex-direction: column; gap: 8px; }
+.adm-card-preview.tall { width: 140px; }
+.adm-card-preview .poster.grab { cursor: grab; touch-action: none; user-select: none; }
+.adm-card-preview .poster.grab:active { cursor: grabbing; }
+.adm-card-preview .poster:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
+.adm-crop-bar { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+.adm-crop-bar .adm-seg button { height: 30px; padding: 0 10px; font-size: 13px; }
+.adm-crop-bar .adm-link { align-self: center; font-size: 13px; }
+.adm-link:disabled { opacity: .4; text-decoration: none; cursor: default; }
+.adm-zoom { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text-2); }
+.adm-zoom input { flex: 1; min-width: 0; accent-color: var(--red); }
+.adm-zoom output { width: 42px; text-align: right; font-variant-numeric: tabular-nums; color: var(--muted); }
 
 /* avatars */
 .adm-avatar-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 12px; }

@@ -190,7 +190,8 @@ button.notif { width: 100%; text-align: left; background: none; border: 0; borde
 .card .poster { transition: filter .2s; }
 .card:hover .poster { filter: brightness(1.08); }
 
-.top10-item { display: flex; align-items: stretch; aspect-ratio: 16 / 9.6; }
+/* Rank and card each take half the width; the card is 2:3, the same shape as the poster editor in Admin → Shows. */
+.top10-item { display: flex; align-items: stretch; aspect-ratio: 4 / 3; }
 .top10-item .rank { flex: 1 1 50%; height: 100%; margin-right: -4%; }
 .top10-item .rank text { fill: var(--bg); stroke: #595959; stroke-width: 4px; font-family: var(--font); }
 .top10-item .card { flex: 0 0 50%; }
@@ -659,15 +660,15 @@ button.notif { width: 100%; text-align: left; background: none; border: 0; borde
 .hero-mute { position: absolute; right: var(--gutter); bottom: calc(var(--hero-overlap) + 52px); z-index: 3; pointer-events: auto; background: rgba(0, 0, 0, .3); }
 .channel-hero-bg .hero-mute { display: grid; } /* not hidden by the mobile rule for other round buttons */
 
-/* ============ Card images: stretched to fill the card (no crop, no black bars) ============ */
-:is(.card, .preview-art, .more-art, .lv-art, .trend-item) .poster.has-img { background: #000; }
-:is(.card, .preview-art, .more-art, .lv-art, .trend-item) .poster-img { object-fit: fill; }
+/* ============ Card and info modal images: cropped as set in Admin → Shows (never stretched) ============ */
+/* Fills the frame, zoomed about the crop point (default: centred), or .whole: the full image over a blurred copy. */
+.poster-img-fill { display: none; }
+:is(.card, .preview-art, .more-art, .lv-art, .trend-item, .history-art, .backdrop-grid, .modal-hero, .adm-card-preview) .poster.has-img { background: #000; }
+:is(.card, .preview-art, .more-art, .lv-art, .trend-item, .history-art, .backdrop-grid, .modal-hero, .adm-card-preview) .poster-img {
+  object-position: var(--x, 50%) var(--y, 50%); transform: scale(var(--zoom, 1)); transform-origin: var(--x, 50%) var(--y, 50%); }
+:is(.card, .preview-art, .more-art, .lv-art, .trend-item, .history-art, .backdrop-grid, .modal-hero, .adm-card-preview) .poster-img.whole { object-fit: contain; transform: none; }
+:is(.card, .preview-art, .more-art, .lv-art, .trend-item, .history-art, .backdrop-grid, .modal-hero, .adm-card-preview) .poster-img-fill { display: block; position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; transform: scale(1.2); filter: blur(14px) brightness(.7); }
 
-/* ============ Top 10 with wide images: rank number exactly as tall as the 16:9 card ============ */
-.top10-item.wide { aspect-ratio: auto; align-items: stretch; }
-.top10-item.wide .rank { flex: 0 0 27%; height: auto; margin-right: -1.5%; }
-.top10-item.wide .card { flex: 1 1 auto; min-width: 0; }
-.top10-item.wide .card .poster { height: auto; aspect-ratio: 16 / 9; }
 .top10-item .rank text { stroke-width: 3px; }
 
 /* ============ Accounts: boot, sign-up steps, recovery, avatars, account page ============ */

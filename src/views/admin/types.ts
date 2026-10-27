@@ -1,5 +1,5 @@
 // Shapes returned by the /api/admin routes.
-import type { ChannelColors, Role, ScheduleBlock, TitleType, Video } from '@/lib/types'
+import type { ChannelColors, ImageCrops, Role, ScheduleBlock, TitleType, Video } from '@/lib/types'
 
 export interface AdminChannel {
   id: string
@@ -25,7 +25,8 @@ export interface AdminTitleRow {
 
 export interface TitleDetail {
   id: string; name: string; year: number | null; type: TitleType; genre: string | null; synopsis: string | null; category: string | null
-  maturity: string | null; image: string | null; poster: string | null; link: string | null; videos: Video[]; hidden: boolean; publishAt: string | null; channels: string[]
+  maturity: string | null; image: string | null; poster: string | null; backdrop: string | null; crops: ImageCrops; link: string | null; videos: Video[]
+  hidden: boolean; publishAt: string | null; channels: string[]
   impact: { lists: number; progress: number }
 }
 

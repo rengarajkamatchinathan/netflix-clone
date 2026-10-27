@@ -1,20 +1,27 @@
 'use client'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { api } from '@/lib/api'
-import type { TitleType } from '@/lib/types'
+import { DEFAULT_CROP, toCrop } from '@/lib/ids'
+import type { ImageCrop, ImageCrops, ImageKind, TitleType } from '@/lib/types'
 import { useReloadCatalog } from '@/context/CatalogContext'
 import { Plus, Search, Trash } from '@/components/icons'
+import { PosterImg } from '@/components/ui'
 import { Check, ConfirmDelete, errorMessage, Loading, Modal, SelectField, SortableList, TextField, Thumb, useApi, useToast } from './kit'
 import type { AdminChannel, AdminTitleRow, TitleDetail } from './types'
 
 interface EpisodeRow { key: number; title: string; url: string }
 interface ShowForm {
   name: string; year: string; type: TitleType; genre: string; synopsis: string; category: string; maturity: string
-  image: string; poster: string; link: string; videos: EpisodeRow[]; channels: string[]; hidden: boolean; publishAt: string
+  image: string; poster: string; backdrop: string; crops: Record<ImageKind, ImageCrop>; link: string; videos: EpisodeRow[]; channels: string[]
+  hidden: boolean; publishAt: string
 }
 
-const EMPTY: ShowForm = { name: '', year: '', type: 'tv', genre: '', synopsis: '', category: '', maturity: '', image: '', poster: '', link: '', videos: [], channels: [], hidden: false, publishAt: '' }
+const formCrops = (c: ImageCrops = {}) => ({ image: c.image || DEFAULT_CROP, poster: c.poster || DEFAULT_CROP, backdrop: c.backdrop || DEFAULT_CROP })
+const EMPTY: ShowForm = {
+  name: '', year: '', type: 'tv', genre: '', synopsis: '', category: '', maturity: '', image: '', poster: '', backdrop: '', crops: formCrops(), link: '', videos: [],
+  channels: [], hidden: false, publishAt: '',
+}
 let rowSeq = 0
 const withKeys = (videos: { title: string | null; url: string }[]): EpisodeRow[] => videos.map(v => ({ title: v.title || '', url: v.url, key: ++rowSeq }))
 
@@ -29,7 +36,7 @@ const fmtWhen = (iso: string) => new Date(iso).toLocaleString([], { day: 'numeri
 
 const toForm = (t: TitleDetail): ShowForm => ({
   name: t.name, year: t.year == null ? '' : String(t.year), type: t.type, genre: t.genre || '', synopsis: t.synopsis || '', category: t.category || '',
-  maturity: t.maturity || '', image: t.image || '', poster: t.poster || '', link: t.link || '', videos: withKeys(t.videos || []), channels: t.channels, hidden: t.hidden, publishAt: toLocalInput(t.publishAt),
+  maturity: t.maturity || '', image: t.image || '', poster: t.poster || '', backdrop: t.backdrop || '', crops: formCrops(t.crops), link: t.link || '', videos: withKeys(t.videos || []), channels: t.channels, hidden: t.hidden, publishAt: toLocalInput(t.publishAt),
 })
 
 type ImageStatusValue = 'none' | 'checking' | 'ok' | 'broken'
@@ -55,6 +62,67 @@ function ImageStatus({ status }: { status: ImageStatusValue }) {
   if (status === 'broken') return <small className="adm-err-text">This image doesn&apos;t load. Check the link.</small>
   if (status === 'checking') return <small>Checking image…</small>
   return null
+}
+
+const pct = (v: number) => Math.round(Math.min(100, Math.max(0, v)) * 10) / 10
+// The crop after dragging the image by dx, dy px; ox, oy are how far the zoomed image overflows the card.
+const dragged = (c: ImageCrop, dx: number, dy: number, ox: number, oy: number): ImageCrop =>
+  ({ ...c, x: ox > 0 ? pct(c.x - dx / ox * 100) : c.x, y: oy > 0 ? pct(c.y - dy / oy * 100) : c.y })
+
+// One image's crop, drawn exactly as viewers see it (16:9, or 2:3 when tall). Drag the image (or use
+// the arrow keys) to choose what it shows, zoom in, or switch to the whole image.
+function CropEditor({ src, label, tall, crop, onChange }: { src: string; label: string; tall?: boolean; crop: ImageCrop; onChange: (c: ImageCrop) => void }) {
+  const frame = useRef<HTMLDivElement>(null)
+  const drag = useRef<{ px: number; py: number; ox: number; oy: number; from: ImageCrop } | null>(null)
+  const fill = crop.fit === 'cover'
+
+  const overflow = () => {
+    const el = frame.current!, img = el.querySelector<HTMLImageElement>('.poster-img')
+    if (!img?.naturalWidth) return { ox: 0, oy: 0 }
+    const s = Math.max(el.clientWidth / img.naturalWidth, el.clientHeight / img.naturalHeight) * crop.zoom
+    return { ox: img.naturalWidth * s - el.clientWidth, oy: img.naturalHeight * s - el.clientHeight }
+  }
+  const nudge: Record<string, [number, number]> = { ArrowLeft: [-10, 0], ArrowRight: [10, 0], ArrowUp: [0, -10], ArrowDown: [0, 10] }
+
+  return (
+    <div className="adm-crop">
+      <div className={`adm-card-preview ${tall ? 'tall' : ''}`}>
+        <div ref={frame} className={`poster ${tall ? 'tall' : 'wide'} has-img ${fill ? 'grab' : ''}`} tabIndex={fill ? 0 : -1}
+          aria-label={fill ? `${label}. Drag or use the arrow keys to move it.` : label}
+          onPointerDown={e => {
+            if (!fill) return
+            e.currentTarget.setPointerCapture(e.pointerId)
+            drag.current = { px: e.clientX, py: e.clientY, ...overflow(), from: crop }
+          }}
+          onPointerMove={e => { const d = drag.current; if (d) onChange(dragged(d.from, e.clientX - d.px, e.clientY - d.py, d.ox, d.oy)) }}
+          onPointerUp={() => { drag.current = null }} onPointerCancel={() => { drag.current = null }}
+          onKeyDown={e => {
+            const n = fill && nudge[e.key]
+            if (!n) return
+            e.preventDefault()
+            const { ox, oy } = overflow()
+            onChange(dragged(crop, n[0], n[1], ox, oy))
+          }}>
+          <PosterImg src={src} crop={crop} />
+        </div>
+      </div>
+      <div className="adm-crop-bar">
+        <div className="adm-seg" role="group" aria-label={`${label} fit`}>
+          <button type="button" aria-pressed={fill} className={fill ? 'on' : ''} onClick={() => onChange({ ...crop, fit: 'cover' })}>Fill</button>
+          <button type="button" aria-pressed={!fill} className={fill ? '' : 'on'} onClick={() => onChange({ ...crop, fit: 'contain' })}>Whole image</button>
+        </div>
+        <button type="button" className="adm-link" disabled={!toCrop(crop)} onClick={() => onChange(DEFAULT_CROP)}>Reset</button>
+      </div>
+      {fill && (
+        <label className="adm-zoom">
+          <span>Zoom</span>
+          <input type="range" min={1} max={3} step={0.01} value={crop.zoom} aria-label={`${label} zoom`} onChange={e => onChange({ ...crop, zoom: Number(e.target.value) })} />
+          <output>{crop.zoom.toFixed(2)}×</output>
+        </label>
+      )}
+      <small className="adm-muted small">{fill ? 'Drag the image to choose which part shows.' : 'The whole image shows; any space around it is filled with a blurred copy.'}</small>
+    </div>
+  )
 }
 
 // Edit or create a show. Opens from the Shows page or from a channel's Shows tab.
@@ -86,9 +154,11 @@ export function ShowModal({ id, initial, channels, onClose, onSaved, onDeleted }
 
   const imageStatus = useImageStatus(form?.image.trim())
   const posterStatus = useImageStatus(form?.poster.trim())
+  const backdropStatus = useImageStatus(form?.backdrop.trim())
   if (!form || !saved) return <Modal title="Loading show…" onClose={onClose}><Loading error={err} /></Modal>
 
   const set = (patch: Partial<ShowForm>) => setForm(f => f && { ...f, ...patch })
+  const setCrop = (k: ImageKind) => (c: ImageCrop) => setForm(f => f && { ...f, crops: { ...f.crops, [k]: c } })
   const dirty = JSON.stringify(form) !== JSON.stringify(saved)
   const chName = (c: string) => channels.find(x => x.id === c)?.name || c
   const name = form.name.trim() || 'New show'
@@ -145,6 +215,11 @@ export function ShowModal({ id, initial, channels, onClose, onSaved, onDeleted }
                 <TextField label="Poster link (tall, optional)" value={form.poster} onChange={v => set({ poster: v })} placeholder="https://…" />
                 <ImageStatus status={posterStatus} />
               </div>
+              <div>
+                <TextField label="Background image link (wide, optional)" value={form.backdrop} onChange={v => set({ backdrop: v })} placeholder="https://…"
+                  hint="Shown at the top of the show's info window. Leave empty to use the image above." />
+                <ImageStatus status={backdropStatus} />
+              </div>
               <TextField label="Info link (opens when the show is clicked)" value={form.link} onChange={v => set({ link: v })} placeholder="https://…" hint="Leave empty to use the built-in player." />
               <div className="adm-row2">
                 <TextField label="Category" value={form.category} onChange={v => set({ category: v })} placeholder="Series" hint="'Series' puts it in the Sitcoms row." maxLength={40} />
@@ -170,14 +245,18 @@ export function ShowModal({ id, initial, channels, onClose, onSaved, onDeleted }
               </div>
             </div>
             <div className="adm-preview">
-              <span className="adm-label">Preview</span>
-              <div className="adm-show-preview">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                {form.image && imageStatus === 'ok' ? <img src={form.image} alt="" referrerPolicy="no-referrer" /> : <Thumb t={{ id: form.name, name: form.name }} size="lg" />}
-                <span>{name}</span>
-              </div>
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              {form.poster && posterStatus === 'ok' && <img className="adm-poster-preview" src={form.poster} alt="" referrerPolicy="no-referrer" />}
+              <span className="adm-label">Card</span>
+              {form.image && imageStatus === 'ok'
+                ? <CropEditor src={form.image.trim()} label="Card image" crop={form.crops.image} onChange={setCrop('image')} />
+                : <div className="adm-show-preview"><Thumb t={{ id: form.name, name: form.name }} size="lg" /><span>{name}</span></div>}
+              {form.poster && posterStatus === 'ok' && <>
+                <span className="adm-label">Poster (tall cards)</span>
+                <CropEditor src={form.poster.trim()} label="Poster" tall crop={form.crops.poster} onChange={setCrop('poster')} />
+              </>}
+              {form.backdrop && backdropStatus === 'ok' && <>
+                <span className="adm-label">Info window background</span>
+                <CropEditor src={form.backdrop.trim()} label="Info window background" crop={form.crops.backdrop} onChange={setCrop('backdrop')} />
+              </>}
             </div>
           </div>
         ) : (

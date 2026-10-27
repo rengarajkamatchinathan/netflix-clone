@@ -223,11 +223,8 @@ function RankNumber({ n }: { n: number }) {
 }
 
 export function Row({ title, items, top10, link, viewAll, resume }: { title: string; items: Title[]; top10?: boolean; link?: string; viewAll?: string; resume?: boolean }) {
-  // Top 10 uses tall posters only when every show has a tall "poster" image (or no image at all);
-  // otherwise it shows rank + wide 16:9 cards so wide images aren't cropped. Wide items need more room.
-  const tallTop10 = !!top10 && items.every(t => t.poster || !t.image)
-  const basePer = usePerRow()
-  const per = top10 && !tallTop10 ? Math.max(2, basePer - 1) : basePer
+  // Top 10 always uses tall cards: the show's "poster" image, or its main image when it has none.
+  const per = usePerRow()
   const pages = Math.ceil(items.length / per)
   const [page, setPage] = useState(0)
   const [moved, setMoved] = useState(false)
@@ -252,7 +249,7 @@ export function Row({ title, items, top10, link, viewAll, resume }: { title: str
             return (
               <div key={t.id} className="slider-item" style={{ flexBasis: `${100 / per}%` }}>
                 {top10
-                  ? <div className={`top10-item ${tallTop10 ? '' : 'wide'}`}><RankNumber n={i + 1} /><TitleCard t={t} tall={tallTop10} origin={origin} /></div>
+                  ? <div className="top10-item"><RankNumber n={i + 1} /><TitleCard t={t} tall origin={origin} /></div>
                   : <TitleCard t={t} origin={origin} resume={resume} />}
               </div>
             )
@@ -392,7 +389,7 @@ export function DetailModal({ t, rect, onClose }: { t: Title; rect: Rect; onClos
       <div className="modal" ref={ref} onClick={e => e.stopPropagation()}>
         <button className="modal-close" onClick={close} aria-label="Close"><Close size={22} /></button>
         <div className="modal-hero">
-          <PosterArt t={t} bare />
+          <PosterArt t={t} bare backdrop />
           <div className="modal-hero-fade" />
           <div className="modal-hero-info">
             <h1 className="title-treatment">{t.name}</h1>

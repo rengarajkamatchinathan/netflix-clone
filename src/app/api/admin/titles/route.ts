@@ -19,9 +19,10 @@ export const POST = handle(async req => {
   const f = titleFields(body)
   const id = await freeId('titles', slug(f.name) || 'show')
   await tx(async c => {
-    await c.query(`insert into titles (id, name, year, type, genre, synopsis, category, maturity, image, poster, link, videos, hidden, publish_at)
-                   values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
-      [id, f.name, f.year, f.type, f.genre, f.synopsis, f.category, f.maturity, f.image, f.poster, f.link, JSON.stringify(f.videos), f.hidden, f.publishAt])
+    await c.query(`insert into titles (id, name, year, type, genre, synopsis, category, maturity, image, poster, link, videos, hidden, publish_at, backdrop, crops)
+                   values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)`,
+      [id, f.name, f.year, f.type, f.genre, f.synopsis, f.category, f.maturity, f.image, f.poster, f.link, JSON.stringify(f.videos), f.hidden, f.publishAt,
+        f.backdrop, f.crops && JSON.stringify(f.crops)])
     await setTitleChannels(c, id, body.channels)
   })
   if (!f.hidden) await notify({ kind: 'title', titleId: id, heading: await newTitleHeading(id), body: f.name, at: f.publishAt })

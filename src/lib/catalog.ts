@@ -1,7 +1,7 @@
 // Turns the catalog from /api/catalog into what the app displays, plus the live-channel schedule.
 // Everything here is a pure function of a Catalog, so it is safe on the server and in the browser.
 import { hash, youtubeId } from './ids'
-import type { Bumper, CatalogData, RawChannel, RawTitle, ScheduleBlock, TitleType, Video } from './types'
+import type { Bumper, CatalogData, ImageCrops, RawChannel, RawTitle, ScheduleBlock, TitleType, Video } from './types'
 
 export { hash, youtubeId }
 
@@ -30,6 +30,8 @@ export interface Title {
   image: string | null
   link: string | null
   poster: string | null
+  backdrop: string | null
+  crops: ImageCrops
   videos: Video[]
   hasMedia: boolean
   videoUrl: string
@@ -80,6 +82,8 @@ function toTitle(s: RawTitle, i: number): Title {
     image: s.image || null,
     link: s.link || null,
     poster: s.poster || null,
+    backdrop: s.backdrop || null,
+    crops: s.crops || {},
     videos,
     hasMedia: videos.length > 0,
     videoUrl: videos[0]?.url || SAMPLE,
